@@ -585,6 +585,19 @@ actor_rollout_ref:
         # Class name of the custom async server class (e.g. AsyncvLLMServer)
         name: null
 
+    # [Experimental] Annealed sampling configuration
+    annealed_sampling:
+
+      # Exploration temperature for annealed sampling
+      exploration_temp: 1.0
+
+      # Stability temperature for annealed sampling
+      stability_temp: 0.1
+
+      # Decay frequency for annealed sampling
+      decay_freq: 50
+
+
 # configs for the critic
 critic:
 

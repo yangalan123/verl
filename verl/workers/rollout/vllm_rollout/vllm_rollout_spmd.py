@@ -54,6 +54,7 @@ from verl import DataProto
 from verl.utils.debug import GPUMemoryLogger
 from verl.utils.torch_functional import get_response_mask, pad_2d_list_to_length
 from verl.workers.rollout.base import BaseRollout
+from verl.workers.rollout.vllm_rollout.annealed_sampling import annealed_sampling_processor
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
@@ -194,6 +195,22 @@ class vLLMRollout(BaseRollout):
         for k in config.keys():
             if hasattr(SamplingParams(), str(k)):
                 kwargs[k] = config.get(k)
+
+        if hasattr(config, 'annealed_sampling') and config.annealed_sampling is not None:
+            annealed_config = config.annealed_sampling
+            exploration_temp = annealed_config.get('exploration_temp', 1.0)
+            stability_temp = annealed_config.get('stability_temp', 0.1)
+            decay_freq = annealed_config.get('decay_freq', 50)
+            
+            # Create and apply the annealed sampling monkey patch
+            annealed_logits_processor = lambda token_ids, logits: annealed_sampling_processor(
+                token_ids=token_ids,
+                logits=logits,
+                exploration_temp=exploration_temp,
+                stability_temp=stability_temp,
+                decay_freq=decay_freq
+            )
+            kwargs["logits_processors"] = [annealed_logits_processor]
 
         print(f"kwargs: {kwargs}")
         self.sampling_params = SamplingParams(**kwargs)
