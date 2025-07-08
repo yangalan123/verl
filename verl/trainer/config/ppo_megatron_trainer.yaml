@@ -262,6 +262,9 @@ actor_rollout_ref:
     # [Experimental] Annealed sampling configuration
     annealed_sampling:
 
+      # Whether to enable annealed sampling (default: False)
+      enable: False
+
       # Exploration temperature for annealed sampling
       exploration_temp: 1.0
 
