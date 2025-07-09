@@ -707,6 +707,7 @@ class RayPPOTrainer:
                 "recompute_log_prob": False,
                 "do_sample": self.config.actor_rollout_ref.rollout.val_kwargs.do_sample,
                 "validate": True,
+                "global_step": self.global_steps,
             }
             print(f"test_gen_batch meta info: {test_gen_batch.meta_info}")
 
@@ -1131,6 +1132,8 @@ class RayPPOTrainer:
                     # generate a batch
                     with marked_timer("gen", timing_raw, color="red"):
                         if not self.async_rollout_mode:
+                            # Add global step to meta_info for annealed sampling
+                            gen_batch.meta_info["global_step"] = self.global_steps
                             gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
                         else:
                             # vllm should set async_rollout_mode to enable async rollout

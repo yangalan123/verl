@@ -210,7 +210,8 @@ class vLLMRollout(BaseRollout):
                     logits=logits,
                     exploration_temp=exploration_temp,
                     stability_temp=stability_temp,
-                    decay_freq=decay_freq
+                    decay_freq=decay_freq,
+                    global_step=kwargs.get('global_step', 0)
                 )
                 kwargs["logits_processors"] = [annealed_logits_processor]
 
@@ -327,8 +328,30 @@ class vLLMRollout(BaseRollout):
                     LoRARequest(lora_name=f"{lora_int_id}", lora_int_id=lora_int_id, lora_path="/simon-stub-path")
                 ] * batch_size
 
+        # Get global step from meta_info if available
+        global_step = prompts.meta_info.get("global_step", 0)
+
         # users can customize different sampling_params at different run
         with self.update_sampling_params(**kwargs):
+            # Update sampling params with global step for annealed sampling
+            if hasattr(self.config, 'annealed_sampling') and self.config.annealed_sampling is not None:
+                annealed_config = self.config.annealed_sampling
+                if annealed_config.get('enable', False):
+                    # Update the logits processor with current global step
+                    exploration_temp = annealed_config.get('exploration_temp', 1.0)
+                    stability_temp = annealed_config.get('stability_temp', 0.1)
+                    decay_freq = annealed_config.get('decay_freq', 50)
+                    
+                    annealed_logits_processor = lambda token_ids, logits: annealed_sampling_processor(
+                        token_ids=token_ids,
+                        logits=logits,
+                        exploration_temp=exploration_temp,
+                        stability_temp=stability_temp,
+                        decay_freq=decay_freq,
+                        global_step=global_step
+                    )
+                    self.sampling_params.logits_processors = [annealed_logits_processor]
+
             outputs = self.inference_engine.generate(
                 prompts=vllm_inputs,  # because we have already convert it to prompt token id
                 sampling_params=self.sampling_params,

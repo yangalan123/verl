@@ -10,7 +10,7 @@
 #SBATCH --job-name=run_verl_annealed_sampling
 #SBATCH --nodes=1
 #SBATCH --ntasks=4
-#SBATCH --time=11:59:00
+#SBATCH --time=5:59:00
 #SBATCH --signal=SIGUSR1@120
 
 #train_path=./datasets/aime_83_23_train.parquet
@@ -19,19 +19,24 @@ unset ROCR_VISIBLE_DEVICES
 cd /net/scratch2/chenghao/annealing_sampling
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate ./env
-
 train_path="/net/scratch2/chenghao/annealing_sampling/verl/recipe/annealed_sampling/data/dapo-math-17k.parquet"
 test_path="/net/scratch2/chenghao/annealing_sampling/verl/recipe/annealed_sampling/data/aime-2024.parquet"
 #PROJECT_NAME="demo_verl_gsm8k_qwen2.5_1.5b_instruct"
 #RUN_NAME="annealed_sampling_grpo_lower_lr_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}"
 PROJECT_NAME="RLVR_dapo_recipe_qwen3_1.7b_base"
-RUN_NAME="initial_grpo_baseline"
 #model_path=Qwen/Qwen2.5-Math-7B
     #data.tokenizer='Qwen/Qwen2.5-Math-7B' \
 model_path=Qwen/Qwen3-1.7B-Base
 
 train_files="['$train_path']"
 test_files="['$test_path']"
+#decay_freq=${decays[$decay_idx]}
+#start_temp=${start_temps[$start_temp_idx]}
+#end_temp=${end_temps[$end_temp_idx]}
+decay_freq=100
+start_temp=1.2
+end_temp=0.1
+RUN_NAME="annealed_sampling_grpo_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}"
     #custom_reward_function.path='/net/scratch2/chenghao/annealing_sampling/verl/recipe/annealed_sampling/verifiable_reward.py' \
     #actor_rollout_ref.rollout.top_p=0.95 \
     #actor_rollout_ref.rollout.temperature=0.7 \
@@ -85,6 +90,10 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.max_num_seqs=2048 \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=False \
+    actor_rollout_ref.rollout.annealed_sampling.enable=True \
+    actor_rollout_ref.rollout.annealed_sampling.exploration_temp=${start_temp} \
+    actor_rollout_ref.rollout.annealed_sampling.stability_temp=${end_temp} \
+    actor_rollout_ref.rollout.annealed_sampling.decay_freq=${decay_freq} \
     actor_rollout_ref.rollout.n=16 \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
     actor_rollout_ref.rollout.val_kwargs.temperature=0.7 \
