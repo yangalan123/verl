@@ -600,6 +600,9 @@ actor_rollout_ref:
       # Decay frequency for annealed sampling
       decay_freq: 50
 
+      # Decay mode for annealed sampling. Options: 'global_step', 'token_length', 'both', 'none'.
+      decay_mode: both
+
 
 # configs for the critic
 critic:

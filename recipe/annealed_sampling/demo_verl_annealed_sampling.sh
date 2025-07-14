@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# make sure to run verl/examples/data_preprocess/gsm8k.py to get the gsm8k dataset first
 decays=("25" "50" "100")
 start_temps=("1.0" "1.2" "0.6")
 end_temps=("0.1" "0.0")
