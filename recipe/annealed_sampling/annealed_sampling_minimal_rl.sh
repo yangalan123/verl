@@ -28,13 +28,16 @@ algorithm=grpo
 model=Qwen2.5-Math-1.5B
 model_name_or_path=Qwen/$model
 rollout_n=4
+# config for annealed sampling
 decay_freq=2000
 start_temp=1.2
 end_temp=0.1
+warmup_period=10
+# config for cluster
 num_gpu_per_node=4
 save_freq=10
 test_freq=10
-experiment_name="annealed_sampling_grpo_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}"
+experiment_name="annealed_sampling_grpo_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_warmup_period_${warmup_period}"
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
 ROOT_DIR=/net/scratch2/chenghao/annealing_sampling/Minimal-RL
 
@@ -70,6 +73,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.annealed_sampling.exploration_temp=${start_temp} \
     actor_rollout_ref.rollout.annealed_sampling.stability_temp=${end_temp} \
     actor_rollout_ref.rollout.annealed_sampling.decay_freq=${decay_freq} \
+    actor_rollout_ref.rollout.annealed_sampling.warmup_period=${warmup_period} \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
