@@ -6,7 +6,7 @@ from typing import Union
 def annealed_sampling_processor(token_ids: Union[list[int], tuple[int]], logits: torch.Tensor, 
                                exploration_temp: float = 1.0, stability_temp: float = 0.1, 
                                decay_freq: int = 50, global_step: int = 0,
-                               decay_mode: str = 'both') -> torch.Tensor:
+                               decay_mode: str = 'both', warmup_period: int = 10) -> torch.Tensor:
     """
     Annealed sampling logits processor for vLLM.
     
@@ -18,10 +18,13 @@ def annealed_sampling_processor(token_ids: Union[list[int], tuple[int]], logits:
         decay_freq: Decay frequency for temperature annealing
         global_step: Current global optimization step
         decay_mode: Which annealing mode to use. Options: 'global_step', 'token_length', 'both', 'none'.
-        
+        warmup_period: If len(token_ids) < warmup_period, do not apply temperature scaling (default: 10)
     Returns:
         Modified logits tensor
     """
+    # If in warmup period, do not apply temperature scaling
+    if len(token_ids) < warmup_period:
+        return logits
     # Calculate the current temperature based on the selected decay mode
     if decay_mode == 'global_step':
         current_temp = stability_temp + (exploration_temp - stability_temp) * np.exp(-global_step / decay_freq)

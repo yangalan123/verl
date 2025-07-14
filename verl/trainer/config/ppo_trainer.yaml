@@ -603,6 +603,9 @@ actor_rollout_ref:
       # Decay mode for annealed sampling. Options: 'global_step', 'token_length', 'both', 'none'.
       decay_mode: both
 
+      # Warmup period: if output length is less than this, do not apply annealing (default: 10)
+      warmup_period: 10
+
 
 # configs for the critic
 critic:

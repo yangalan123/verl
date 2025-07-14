@@ -274,6 +274,9 @@ actor_rollout_ref:
       # Decay frequency for annealed sampling
       decay_freq: 50
 
+      # Warmup period: if output length is less than this, do not apply annealing (default: 10)
+      warmup_period: 10
+
 
     # support logging rollout prob for debugging purpose
     calculate_log_probs: False

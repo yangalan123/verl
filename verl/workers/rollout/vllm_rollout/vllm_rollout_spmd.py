@@ -204,6 +204,7 @@ class vLLMRollout(BaseRollout):
                 stability_temp = annealed_config.get('stability_temp', 0.1)
                 decay_freq = annealed_config.get('decay_freq', 50)
                 decay_mode = annealed_config.get('decay_mode', 'both')
+                warmup_period = annealed_config.get('warmup_period', 10)
                 
                 # Create and apply the annealed sampling monkey patch
                 annealed_logits_processor = lambda token_ids, logits: annealed_sampling_processor(
@@ -213,7 +214,8 @@ class vLLMRollout(BaseRollout):
                     stability_temp=stability_temp,
                     decay_freq=decay_freq,
                     global_step=kwargs.get('global_step', 0),
-                    decay_mode=decay_mode
+                    decay_mode=decay_mode,
+                    warmup_period=warmup_period
                 )
                 kwargs["logits_processors"] = [annealed_logits_processor]
 
@@ -344,6 +346,7 @@ class vLLMRollout(BaseRollout):
                     stability_temp = annealed_config.get('stability_temp', 0.1)
                     decay_freq = annealed_config.get('decay_freq', 50)
                     decay_mode = annealed_config.get('decay_mode', 'both')
+                    warmup_period = annealed_config.get('warmup_period', 10)
                     
                     annealed_logits_processor = lambda token_ids, logits: annealed_sampling_processor(
                         token_ids=token_ids,
@@ -352,7 +355,8 @@ class vLLMRollout(BaseRollout):
                         stability_temp=stability_temp,
                         decay_freq=decay_freq,
                         global_step=global_step,
-                        decay_mode=decay_mode
+                        decay_mode=decay_mode,
+                        warmup_period=warmup_period
                     )
                     self.sampling_params.logits_processors = [annealed_logits_processor]
 
