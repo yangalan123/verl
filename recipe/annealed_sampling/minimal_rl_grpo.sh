@@ -18,7 +18,7 @@
 unset ROCR_VISIBLE_DEVICES
 cd /net/scratch2/chenghao/annealing_sampling
 source ~/miniconda3/etc/profile.d/conda.sh
-conda activate ./env
+conda activate /net/scratch2/chenghao/annealing_sampling/Minimal-RL/env
 set -x
 
 export VLLM_ATTENTION_BACKEND=XFORMERS
@@ -27,7 +27,9 @@ project_name="minimal_rl_numina_math"
 algorithm=grpo
 model=Qwen2.5-Math-1.5B
 model_name_or_path=Qwen/$model
-n=4
+rollout_n=4
+# for mean@K computation
+k_max=16
 #experiment_name=${model}-${algorithm}-${data}-n${n}
 experiment_name="initial_grpo_baseline"
 GPUS=(0 1 2 3 4 5 6 7)
@@ -66,7 +68,8 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.8 \
-    actor_rollout_ref.rollout.n=$n \
+    actor_rollout_ref.rollout.n=${rollout_n} \
+    actor_rollout_ref.rollout.val_kwargs.n=${k_max} \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.kl_ctrl.kl_coef=0.001 \

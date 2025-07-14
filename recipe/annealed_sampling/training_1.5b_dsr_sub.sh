@@ -22,7 +22,7 @@ unset ROCR_VISIBLE_DEVICES
 cd /net/scratch2/chenghao/annealing_sampling
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate ./env
-PROJECT_NAME="oneshort_rlvr_dsrsub_recipe_qwen2.5_math_1.5b"
+PROJECT_NAME="oneshot_rlvr_dsrsub_recipe_qwen2.5_math_1.5b"
 RUN_NAME="initial_grpo_baseline"
 
 python3 -m verl.trainer.main_ppo \
@@ -45,15 +45,15 @@ python3 -m verl.trainer.main_ppo \
  actor_rollout_ref.actor.kl_loss_type=low_var_kl \
  actor_rollout_ref.model.enable_gradient_checkpointing=True \
  actor_rollout_ref.actor.fsdp_config.param_offload=False \
- actor_rollout_ref.actor.fsdp_config.grad_offload=False \
+ +actor_rollout_ref.actor.fsdp_config.grad_offload=False \
  actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
  actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
  actor_rollout_ref.rollout.name=vllm \
  actor_rollout_ref.rollout.temperature=0.6 \
- actor_rollout_ref.rollout.val_temperature=0.6 \
+ +actor_rollout_ref.rollout.val_temperature=0.6 \
  actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
  actor_rollout_ref.rollout.n=8 \
- actor_rollout_ref.rollout.n_val=1 \
+ +actor_rollout_ref.rollout.n_val=1 \
  actor_rollout_ref.ref.fsdp_config.param_offload=True \
  algorithm.kl_ctrl.kl_coef=0.001 \
  trainer.critic_warmup=0 \
@@ -61,7 +61,7 @@ python3 -m verl.trainer.main_ppo \
  trainer.project_name=$PROJECT_NAME \
  trainer.experiment_name=$RUN_NAME \
  trainer.val_before_train=True \
- trainer.n_gpus_per_node=8 \
+ trainer.n_gpus_per_node=4 \
  trainer.nnodes=1 \
  trainer.save_freq=20 \
  trainer.test_freq=20 \

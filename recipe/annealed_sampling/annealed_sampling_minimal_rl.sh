@@ -27,7 +27,10 @@ project_name="minimal_rl_numina_math"
 algorithm=grpo
 model=Qwen2.5-Math-1.5B
 model_name_or_path=Qwen/$model
+# for grpo rollout
 rollout_n=4
+# for mean@K computation
+k_max=16
 # config for annealed sampling
 decay_freq=2000
 start_temp=1.2
@@ -47,7 +50,8 @@ math_test_path=$ROOT_DIR/data/math500/test.parquet
 train_files="['$math_train_path']"
 test_files="['$math_test_path']"
 
-mkdir -p logs/${project_name}
+log_dir=$ROOT_DIR/logs/${project_name}
+mkdir -p $log_dir
 
 PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
@@ -79,6 +83,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.8 \
     actor_rollout_ref.rollout.n=${rollout_n} \
+    actor_rollout_ref.rollout.val_kwargs.n=${k_max} \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.kl_ctrl.kl_coef=0.001 \
@@ -87,6 +92,10 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     trainer.project_name=${project_name} \
     trainer.experiment_name=${experiment_name} \
     trainer.n_gpus_per_node=${num_gpu_per_node} \
+    trainer.rollout_data_dir=${log_dir}/rollout_data \
+    trainer.validation_data_dir=${log_dir}/validation_data \
+    trainer.max_actor_ckpt_to_keep=10 \
+    trainer.max_critic_ckpt_to_keep=10 \
     trainer.val_before_train=True \
     trainer.nnodes=1 \
     trainer.save_freq=${save_freq} \
