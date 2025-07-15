@@ -27,14 +27,27 @@ project_name="minimal_rl_numina_math"
 algorithm=grpo
 model=Qwen2.5-Math-1.5B
 model_name_or_path=Qwen/$model
+# for grpo rollout
 rollout_n=4
 # for mean@K computation
 k_max=16
-#experiment_name=${model}-${algorithm}-${data}-n${n}
-experiment_name="initial_grpo_baseline"
-GPUS=(0 1 2 3 4 5 6 7)
-my_world_size=${#GPUS[@]}
-ROOT_DIR=/net/scratch2/chenghao/annealing_sampling/Minimal-RL
+# config for annealed sampling
+decay_freq=20
+start_temp=1.2
+end_temp=0.1
+warmup_period=10
+# config for cluster
+num_gpu_per_node=4
+save_freq=10
+test_freq=10
+strategy="global_step"
+if [ $warmup_period -eq 0 ]; then
+    experiment_name="annealed_sampling_grpo_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_${strategy}"
+else
+    experiment_name="annealed_sampling_grpo_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_warmup_period_${warmup_period}_${strategy}"
+fi
+# where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
+ROOT_DIR=/net/scratch2/chenghao/annealing_sampling
 
 math_train_path=$ROOT_DIR/data/$data/train.parquet
 math_test_path=$ROOT_DIR/data/math500/test.parquet
@@ -42,7 +55,8 @@ math_test_path=$ROOT_DIR/data/math500/test.parquet
 train_files="['$math_train_path']"
 test_files="['$math_test_path']"
 
-mkdir -p logs/${project_name}
+log_dir=$ROOT_DIR/logs/${project_name}/${experiment_name}
+mkdir -p $log_dir
 
 PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
@@ -64,6 +78,12 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
+    actor_rollout_ref.rollout.annealed_sampling.enable=True \
+    actor_rollout_ref.rollout.annealed_sampling.decay_mode=${strategy} \
+    actor_rollout_ref.rollout.annealed_sampling.exploration_temp=${start_temp} \
+    actor_rollout_ref.rollout.annealed_sampling.stability_temp=${end_temp} \
+    actor_rollout_ref.rollout.annealed_sampling.decay_freq=${decay_freq} \
+    actor_rollout_ref.rollout.annealed_sampling.warmup_period=${warmup_period} \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
@@ -77,12 +97,14 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name=${project_name} \
     trainer.experiment_name=${experiment_name} \
-    trainer.n_gpus_per_node=4 \
-    trainer.val_before_train=True \
-    trainer.nnodes=1 \
-    trainer.save_freq=10 \
+    trainer.n_gpus_per_node=${num_gpu_per_node} \
+    trainer.rollout_data_dir=${log_dir}/rollout_data \
+    trainer.validation_data_dir=${log_dir}/validation_data \
     trainer.max_actor_ckpt_to_keep=5 \
     trainer.max_critic_ckpt_to_keep=5 \
+    trainer.val_before_train=True \
+    trainer.nnodes=1 \
+    trainer.save_freq=${save_freq} \
     trainer.default_local_dir=checkpoints/${project_name}/${experiment_name} \
-    trainer.test_freq=10 \
+    trainer.test_freq=${test_freq} \
     trainer.total_epochs=1 2>&1 | tee logs/${project_name}/${experiment_name}.log

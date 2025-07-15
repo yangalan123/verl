@@ -42,7 +42,7 @@ save_freq=10
 test_freq=10
 experiment_name="annealed_sampling_grpo_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_warmup_period_${warmup_period}"
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
-ROOT_DIR=/net/scratch2/chenghao/annealing_sampling/Minimal-RL
+ROOT_DIR=/net/scratch2/chenghao/annealing_sampling
 
 math_train_path=$ROOT_DIR/data/$data/train.parquet
 math_test_path=$ROOT_DIR/data/math500/test.parquet
@@ -50,7 +50,7 @@ math_test_path=$ROOT_DIR/data/math500/test.parquet
 train_files="['$math_train_path']"
 test_files="['$math_test_path']"
 
-log_dir=$ROOT_DIR/logs/${project_name}
+log_dir=$ROOT_DIR/logs/${project_name}/${experiment_name}
 mkdir -p $log_dir
 
 PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
@@ -74,6 +74,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.rollout.annealed_sampling.enable=True \
+    actor_rollout_ref.rollout.annealed_sampling.decay_mode="both" \
     actor_rollout_ref.rollout.annealed_sampling.exploration_temp=${start_temp} \
     actor_rollout_ref.rollout.annealed_sampling.stability_temp=${end_temp} \
     actor_rollout_ref.rollout.annealed_sampling.decay_freq=${decay_freq} \
@@ -94,8 +95,8 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     trainer.n_gpus_per_node=${num_gpu_per_node} \
     trainer.rollout_data_dir=${log_dir}/rollout_data \
     trainer.validation_data_dir=${log_dir}/validation_data \
-    trainer.max_actor_ckpt_to_keep=10 \
-    trainer.max_critic_ckpt_to_keep=10 \
+    trainer.max_actor_ckpt_to_keep=5 \
+    trainer.max_critic_ckpt_to_keep=5 \
     trainer.val_before_train=True \
     trainer.nnodes=1 \
     trainer.save_freq=${save_freq} \
