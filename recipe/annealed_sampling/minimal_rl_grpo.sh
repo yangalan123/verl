@@ -31,7 +31,8 @@ rollout_n=4
 # for mean@K computation
 k_max=16
 #experiment_name=${model}-${algorithm}-${data}-n${n}
-experiment_name="initial_grpo_baseline"
+temperature=0.1
+experiment_name="initial_grpo_baseline_temperature_${temperature}"
 GPUS=(0 1 2 3 4 5 6 7)
 my_world_size=${#GPUS[@]}
 ROOT_DIR=/net/scratch2/chenghao/annealing_sampling/Minimal-RL
@@ -69,6 +70,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.8 \
     actor_rollout_ref.rollout.n=${rollout_n} \
+    actor_rollout_ref.rollout.temperature=${temperature} \
     actor_rollout_ref.rollout.val_kwargs.n=${k_max} \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
