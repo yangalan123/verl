@@ -600,11 +600,14 @@ actor_rollout_ref:
       # Decay frequency for annealed sampling
       decay_freq: 50
 
-      # Decay mode for annealed sampling. Options: 'global_step', 'token_length', 'both', 'none'.
+      # Decay mode for annealed sampling. Options: 'global_step', 'token_length', 'both', 'none', 'adaptive'.
       decay_mode: both
 
       # Warmup period: if output length is less than this, do not apply annealing (default: 10)
       warmup_period: 10
+
+      # Whether to enable adaptive decay based on historical performance (default: False)
+      adaptive_decay: False
 
 
 # configs for the critic
@@ -1044,6 +1047,9 @@ trainer:
 
   # Validation frequency (in training iterations)
   test_freq: -1
+
+  # Directory for storing annealing historical data cache (optional)
+  annealing_cache_dir: null
 
   # Number of iterations to warm up the critic before updating policy
   critic_warmup: 0
