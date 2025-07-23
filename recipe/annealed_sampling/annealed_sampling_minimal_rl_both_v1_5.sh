@@ -32,7 +32,7 @@ rollout_n=4
 # for mean@K computation
 k_max=16
 # config for annealed sampling
-decay_freq=25
+decay_freq=250
 start_temp=1.2
 end_temp=0.1
 warmup_period=10
