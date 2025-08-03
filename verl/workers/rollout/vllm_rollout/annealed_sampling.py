@@ -182,6 +182,16 @@ def annealed_sampling_processor(token_ids: Union[list[int], tuple[int]], logits:
         current_temp = 1 + exploration_temp - np.exp(len(token_ids) / (20 * _decay_freq))
         # avoid temperature < stability_temp
         current_temp = max(current_temp, stability_temp)
+    elif decay_mode == "steps_variant":
+        # use the same temperature at all positions, no matter how long token_ids is
+        # the temperature gradually increases from stability_temp to exploration_temp
+        current_temp = exploration_temp + (stability_temp - exploration_temp) * np.exp(-global_step / decay_freq)
+        current_temp = min(current_temp, 1.0)
+    elif decay_mode == "steps_variant_rev":
+        # use the same temperature at all positions, no matter how long token_ids is
+        # the temperature gradually increases from stability_temp to exploration_temp
+        current_temp = stability_temp + (exploration_temp - stability_temp) * np.exp(-global_step / decay_freq)
+        current_temp = max(current_temp, 0.1)
     elif decay_mode == 'adaptive':
         # New adaptive decay mode based on historical performance
         if adaptive_decay and uid is not None:
