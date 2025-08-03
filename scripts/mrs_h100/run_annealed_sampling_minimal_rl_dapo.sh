@@ -29,7 +29,7 @@ num_gpu_per_node=8
 save_freq=10
 test_freq=10
 temperature=1.2
-experiment_name="dapo_baseline_without_dynamic_sampling_temperature_${temperature}"
+experiment_name="dapo_baseline_without_dynamic_sampling_temperature_${temperature}_zzk"
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
 ROOT_DIR=/fsx/zhuokai/verl/
 
@@ -76,7 +76,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.8 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
     actor_rollout_ref.rollout.n=${rollout_n} \
     actor_rollout_ref.rollout.val_kwargs.n=${k_max} \
     actor_rollout_ref.rollout.temperature=${temperature} \
