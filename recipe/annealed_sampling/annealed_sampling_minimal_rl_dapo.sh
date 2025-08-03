@@ -41,7 +41,8 @@ warmup_period=10
 num_gpu_per_node=8
 save_freq=10
 test_freq=10
-experiment_name="dapo_baseline_without_dynamic_sampling
+temperature=0.1
+experiment_name="dapo_baseline_without_dynamic_sampling_temperature_${temperature}"
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
 ROOT_DIR=/net/scratch2/chenghao/annealing_sampling
 
@@ -91,6 +92,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.8 \
     actor_rollout_ref.rollout.n=${rollout_n} \
     actor_rollout_ref.rollout.val_kwargs.n=${k_max} \
+    actor_rollout_ref.rollout.temperature=${temperature} \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.kl_ctrl.kl_coef=0.0 \
