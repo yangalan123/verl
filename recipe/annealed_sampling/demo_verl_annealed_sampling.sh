@@ -29,7 +29,7 @@ echo "Combination: decay_freq=$decay_freq, start_temp=$start_temp, end_temp=$end
 
 unset ROCR_VISIBLE_DEVICES
 PROJECT_NAME="demo_verl_gsm8k_qwen2.5_1.5b_instruct"
-RUN_NAME="annealed_sampling_grpo_lower_lr_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}"
+RUN_NAME="annealed_sampling_grpo_lower_lr_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_zzk"
 
 PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
  data.train_files=./dataset/gsm8k/train.parquet \
@@ -60,7 +60,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
  trainer.experiment_name=$RUN_NAME \
  trainer.val_before_train=False \
  trainer.default_hdfs_dir=null \
- trainer.n_gpus_per_node=4 \
+ trainer.n_gpus_per_node=8 \
  trainer.nnodes=1 \
  trainer.save_freq=10 \
  trainer.test_freq=10 \
