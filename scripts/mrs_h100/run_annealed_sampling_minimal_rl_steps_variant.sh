@@ -4,9 +4,9 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=annealed_sampling_minimal_rl_steps_variant_rev_decay_freq_250
-#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_steps_variant_rev_decay_freq_250.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_steps_variant_rev_decay_freq_250.stderr
+#SBATCH --job-name=annealed_sampling_minimal_rl_steps_variant_rev_decay_freq_20
+#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_steps_variant_rev_decay_freq_20.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_steps_variant_rev_decay_freq_20.stderr
 
 
 data=numina_math
@@ -19,7 +19,7 @@ rollout_n=4
 # for mean@K computation
 k_max=16
 # config for annealed sampling
-decay_freq=250
+decay_freq=20
 start_temp=1.2
 end_temp=0.1
 warmup_period=10
@@ -75,7 +75,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.8 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
     actor_rollout_ref.rollout.n=${rollout_n} \
     actor_rollout_ref.rollout.val_kwargs.n=${k_max} \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \

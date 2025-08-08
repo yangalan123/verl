@@ -4,22 +4,24 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=annealed_sampling_minimal_rl_negexp_decay_2000
-#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_negexp_decay_2000.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_negexp_decay_2000.stderr
+#SBATCH --job-name=annealed_sampling_minimal_rl_negexp_decay_25_llama
+#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_negexp_decay_25_llama.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_negexp_decay_25_llama.stderr
 
 
 data=numina_math
 project_name="minimal_rl_numina_math"
 algorithm=grpo
-model=Qwen2.5-Math-1.5B
-model_name_or_path=Qwen/$model
+# model=Qwen2.5-Math-1.5B
+# model_name_or_path=Qwen/$model
+model=Llama-3.2-1B-Instruct
+model_name_or_path=meta-llama/$model
 # for grpo rollout
 rollout_n=4
 # for mean@K computation
 k_max=16
 # config for annealed sampling
-decay_freq=2000
+decay_freq=25
 start_temp=1.2
 end_temp=0.1
 warmup_period=10
@@ -29,9 +31,9 @@ save_freq=10
 test_freq=10
 strategy="negexp"
 if [ $warmup_period -eq 0 ]; then
-    experiment_name="annealed_sampling_minimal_rl_negexp_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_${strategy}_zzk"
+    experiment_name="annealed_sampling_minimal_rl_negexp_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_${strategy}_${model}_zzk"
 else
-    experiment_name="annealed_sampling_minimal_rl_negexp_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_warmup_period_${warmup_period}_${strategy}_zzk"
+    experiment_name="annealed_sampling_minimal_rl_negexp_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_warmup_period_${warmup_period}_${strategy}_${model}_zzk"
 fi
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
 ROOT_DIR=/fsx/zhuokai/verl

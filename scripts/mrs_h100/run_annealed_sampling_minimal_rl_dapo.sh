@@ -4,16 +4,18 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=annealed_sampling_minimal_rl_dapo_temp_1_2
-#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_dapo_temp_1_2.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_dapo_temp_1_2.stderr
+#SBATCH --job-name=annealed_sampling_minimal_rl_dapo_temp_1_2_llama
+#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_dapo_temp_1_2_llama.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_dapo_temp_1_2_llama.stderr
 
 
 data=numina_math
 project_name="minimal_rl_numina_math"
 algorithm=grpo
-model=Qwen2.5-Math-1.5B
-model_name_or_path=Qwen/$model
+# model=Qwen2.5-Math-1.5B
+# model_name_or_path=Qwen/$model
+model=Llama-3.2-1B-Instruct
+model_name_or_path=meta-llama/$model
 # for grpo rollout
 rollout_n=4
 # rollout_n=16 (to conform better with DAPO)
@@ -29,7 +31,7 @@ num_gpu_per_node=8
 save_freq=10
 test_freq=10
 temperature=1.2
-experiment_name="dapo_baseline_without_dynamic_sampling_temperature_${temperature}_zzk"
+experiment_name="dapo_baseline_without_dynamic_sampling_temperature_${temperature}_${model}_zzk"
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
 ROOT_DIR=/fsx/zhuokai/verl/
 

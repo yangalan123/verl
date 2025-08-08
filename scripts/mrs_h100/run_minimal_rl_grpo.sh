@@ -4,23 +4,25 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=minimal_rl_grpo_temp_1_2
-#SBATCH --output=/fsx/zhuokai/verl/slurm/minimal_rl_grpo_temp_1_2.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/minimal_rl_grpo_temp_1_2.stderr
+#SBATCH --job-name=minimal_rl_grpo_temp_1_2_llama
+#SBATCH --output=/fsx/zhuokai/verl/slurm/minimal_rl_grpo_temp_1_2_llama.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/minimal_rl_grpo_temp_1_2_llama.stderr
 
 
 # export VLLM_ATTENTION_BACKEND=XFORMERS
 data=numina_math
 project_name="minimal_rl_numina_math"
 algorithm=grpo
-model=Qwen2.5-Math-1.5B
-model_name_or_path=Qwen/$model
+# model=Qwen2.5-Math-1.5B
+# model_name_or_path=Qwen/$model
+model=Llama-3.2-1B-Instruct
+model_name_or_path=meta-llama/$model
 rollout_n=4
 # for mean@K computation
 k_max=16
 #experiment_name=${model}-${algorithm}-${data}-n${n}
 temperature=1.2
-experiment_name="initial_grpo_baseline_temperature_${temperature}_zzk"
+experiment_name="initial_grpo_baseline_temperature_${temperature}_${model}_zzk"
 GPUS=(0 1 2 3 4 5 6 7)
 my_world_size=${#GPUS[@]}
 ROOT_DIR=/fsx/zhuokai/verl/
