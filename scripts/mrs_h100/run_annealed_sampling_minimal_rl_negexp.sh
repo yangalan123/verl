@@ -4,9 +4,9 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=annealed_sampling_minimal_rl_negexp_decay_25_llama
-#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_negexp_decay_25_llama.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_negexp_decay_25_llama.stderr
+#SBATCH --job-name=annealed_sampling_minimal_rl_negexp_decay_25_octothinker
+#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_negexp_decay_25_octothinker.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_negexp_decay_25_octothinker.stderr
 
 
 data=numina_math
@@ -14,8 +14,11 @@ project_name="minimal_rl_numina_math"
 algorithm=grpo
 # model=Qwen2.5-Math-1.5B
 # model_name_or_path=Qwen/$model
-model=Llama-3.2-1B-Instruct
-model_name_or_path=meta-llama/$model
+# model=Llama-3.2-1B-Instruct
+# model_name_or_path=meta-llama/$model
+model=OctoThinker-1B-Hybrid-Base
+model_name_or_path=OctoThinker/$model
+tokenizer=meta-llama/Llama-3.2-1B-Instruct
 # for grpo rollout
 rollout_n=4
 # for mean@K computation
@@ -56,6 +59,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     data.max_response_length=3072 \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
+    data.tokenizer=$tokenizer \  # for base models
     actor_rollout_ref.model.path=$model_name_or_path \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
