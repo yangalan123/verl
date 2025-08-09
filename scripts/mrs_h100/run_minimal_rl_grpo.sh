@@ -4,9 +4,9 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=minimal_rl_grpo_temp_1_2_llama
-#SBATCH --output=/fsx/zhuokai/verl/slurm/minimal_rl_grpo_temp_1_2_llama.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/minimal_rl_grpo_temp_1_2_llama.stderr
+#SBATCH --job-name=minimal_rl_grpo_temp_1_2_octothinker
+#SBATCH --output=/fsx/zhuokai/verl/slurm/minimal_rl_grpo_temp_1_2_octothinker.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/minimal_rl_grpo_temp_1_2_octothinker.stderr
 
 
 # export VLLM_ATTENTION_BACKEND=XFORMERS
@@ -15,8 +15,11 @@ project_name="minimal_rl_numina_math"
 algorithm=grpo
 # model=Qwen2.5-Math-1.5B
 # model_name_or_path=Qwen/$model
-model=Llama-3.2-1B-Instruct
-model_name_or_path=meta-llama/$model
+# model=Llama-3.2-1B-Instruct
+# model_name_or_path=meta-llama/$model
+model=OctoThinker-1B-Hybrid-Base
+model_name_or_path=OctoThinker/$model
+tokenizer=meta-llama/Llama-3.2-1B-Instruct
 rollout_n=4
 # for mean@K computation
 k_max=16
@@ -44,6 +47,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     data.max_response_length=3072 \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
+    data.tokenizer=$tokenizer \
     actor_rollout_ref.model.path=$model_name_or_path \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
