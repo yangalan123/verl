@@ -4,9 +4,9 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=minimal_rl_entropy_mechanism_temp_1_0_qwen2.5
-#SBATCH --output=/fsx/zhuokai/verl/slurm/minimal_rl_entropy_mechanism_temp_1_0_qwen2.5.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/minimal_rl_entropy_mechanism_temp_1_0_qwen2.5.stderr
+#SBATCH --job-name=annealed_sampling_entropy_mechanism_temp_1_0_qwen2.5
+#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_entropy_mechanism_temp_1_0_qwen2.5.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_entropy_mechanism_temp_1_0_qwen2.5.stderr
 
 
 data=numina_math
