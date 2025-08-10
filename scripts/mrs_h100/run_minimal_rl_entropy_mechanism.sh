@@ -4,37 +4,65 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=annealed_sampling_minimal_rl_dapo_temp_1_2_octothinker
-#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_dapo_temp_1_2_octothinker.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_dapo_temp_1_2_octothinker.stderr
+#SBATCH --job-name=minimal_rl_entropy_mechanism_temp_1_0_qwen2.5
+#SBATCH --output=/fsx/zhuokai/verl/slurm/minimal_rl_entropy_mechanism_temp_1_0_qwen2.5.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/minimal_rl_entropy_mechanism_temp_1_0_qwen2.5.stderr
 
 
 data=numina_math
 project_name="minimal_rl_numina_math"
 algorithm=grpo
-# model=Qwen2.5-Math-1.5B
+# [TODO for Zhuokai]: change the model to other models, if we have more compute available
+model=Qwen2.5-Math-1.5B
 # model_name_or_path=Qwen/$model
 # model=Llama-3.2-1B-Instruct
 # model_name_or_path=meta-llama/$model
-model=OctoThinker-1B-Hybrid-Base
-model_name_or_path=OctoThinker/$model
-tokenizer=meta-llama/Llama-3.2-1B-Instruct
+#model=OctoThinker-1B-Hybrid-Base
+# model_name_or_path=OctoThinker/$model
+# tokenizer=meta-llama/Llama-3.2-1B-Instruct
+#     data.tokenizer=$tokenizer \
+use_kl_in_reward=False
+kl_coef=0.0
+use_kl_loss=False
+kl_loss_coef=0.0
+
+clip_ratio_low=1
+clip_ratio_high=1
+clip_cov_ratio=0.0002
+clip_cov_lb=1.0
+clip_cov_ub=5.0
+enable_overlong_buffer=False
+overlong_buffer_len=$((1024 * 2))
+overlong_penalty_factor=1.0
+
+loss_agg_mode="token-mean"
+# or "kl_cov"
+loss_mode="clip_cov"
+enable_filter_groups=True
+filter_groups_metric=acc
+# n_resp_per_prompt=8
+# model_name_or_path=Qwen/$model
+# model=Llama-3.2-1B-Instruct
+# model_name_or_path=meta-llama/$model
+#model=OctoThinker-1B-Hybrid-Base
+# model_name_or_path=OctoThinker/$model
+# tokenizer=meta-llama/Llama-3.2-1B-Instruct
+#     data.tokenizer=$tokenizer \
 # for grpo rollout
 rollout_n=4
 # rollout_n=16 (to conform better with DAPO)
 # for mean@K computation
 k_max=16
-# config for annealed sampling
-decay_freq=250
-start_temp=1.2
-end_temp=0.1
-warmup_period=10
 # config for cluster
 num_gpu_per_node=8
 save_freq=10
 test_freq=10
-temperature=1.2
-experiment_name="dapo_baseline_without_dynamic_sampling_temperature_${temperature}_${model}_zzk"
+# [TODO for Zhuokai]: change the temperature to other values
+temperature=1.0
+top_p=1.0
+ppo_kl_coef=1
+kl_cov_ratio=0.2
+experiment_name="entropy_mechanism_baseline_temperature_${temperature}_${model}_zzk"
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
 ROOT_DIR=/fsx/zhuokai/verl/
 
@@ -56,6 +84,10 @@ mkdir -p $log_dir
     # actor_rollout_ref.actor.use_dynamic_bsz=True \
     # actor_rollout_ref.ref.log_prob_use_dynamic_bsz=True \
     # actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True \
+    # gpg with kl loss version
+    # actor_rollout_ref.actor.use_kl_loss=False \
+    # actor_rollout_ref.actor.kl_loss_coef=0.001 \
+    # actor_rollout_ref.actor.kl_loss_type=low_var_kl \
 
 PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
@@ -66,16 +98,11 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     data.max_response_length=3072 \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
-    data.tokenizer=$tokenizer \
     actor_rollout_ref.model.path=$model_name_or_path \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.ppo_mini_batch_size=256 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=4 \
-    actor_rollout_ref.actor.use_kl_loss=False \
-    actor_rollout_ref.actor.kl_loss_coef=0 \
-    actor_rollout_ref.actor.clip_ratio_low=0.2 \
-    actor_rollout_ref.actor.clip_ratio_high=0.28 \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
@@ -84,6 +111,25 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
     actor_rollout_ref.rollout.n=${rollout_n} \
+    actor_rollout_ref.actor.entropy_coeff=0 \
+    actor_rollout_ref.actor.use_kl_loss=${use_kl_loss} \
+    actor_rollout_ref.actor.kl_loss_coef=${kl_loss_coef} \
+    actor_rollout_ref.actor.clip_ratio_low=${clip_ratio_low} \
+    actor_rollout_ref.actor.clip_ratio_high=${clip_ratio_high} \
+    actor_rollout_ref.actor.clip_ratio_c=10.0 \
+    actor_rollout_ref.actor.policy_loss.loss_mode=${loss_mode} \
+    actor_rollout_ref.actor.policy_loss.clip_cov_ratio=${clip_cov_ratio} \
+    actor_rollout_ref.actor.policy_loss.clip_cov_lb=${clip_cov_lb} \
+    actor_rollout_ref.actor.policy_loss.clip_cov_ub=${clip_cov_ub} \
+    reward_model.overlong_buffer.enable=${enable_overlong_buffer} \
+    reward_model.overlong_buffer.len=${overlong_buffer_len} \
+    reward_model.overlong_buffer.penalty_factor=${overlong_penalty_factor} \
+    algorithm.use_kl_in_reward=${use_kl_in_reward} \
+    algorithm.kl_ctrl.kl_coef=${kl_coef} \
+    algorithm.filter_groups.enable=${enable_filter_groups} \
+    algorithm.filter_groups.metric=${filter_groups_metric} \
+    actor_rollout_ref.actor.optim.weight_decay=0 \
+    actor_rollout_ref.actor.optim.warmup_style=constant \
     actor_rollout_ref.rollout.val_kwargs.n=${k_max} \
     actor_rollout_ref.rollout.temperature=${temperature} \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \

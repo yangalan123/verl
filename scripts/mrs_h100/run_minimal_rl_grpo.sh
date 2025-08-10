@@ -4,9 +4,9 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=minimal_rl_grpo_temp_1_2
-#SBATCH --output=/fsx/zhuokai/verl/slurm/minimal_rl_grpo_temp_1_2.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/minimal_rl_grpo_temp_1_2.stderr
+#SBATCH --job-name=minimal_rl_grpo_temp_1_2_octothinker
+#SBATCH --output=/fsx/zhuokai/verl/slurm/minimal_rl_grpo_temp_1_2_octothinker.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/minimal_rl_grpo_temp_1_2_octothinker.stderr
 
 
 # export VLLM_ATTENTION_BACKEND=XFORMERS
@@ -44,6 +44,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     data.max_response_length=3072 \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
+    data.tokenizer=$tokenizer \
     actor_rollout_ref.model.path=$model_name_or_path \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
