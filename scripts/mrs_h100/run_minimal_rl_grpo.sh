@@ -4,19 +4,19 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=minimal_rl_grpo_temp_1_2_llama
-#SBATCH --output=/fsx/zhuokai/verl/slurm/minimal_rl_grpo_temp_1_2_llama.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/minimal_rl_grpo_temp_1_2_llama.stderr
+#SBATCH --job-name=minimal_rl_grpo_temp_1_2
+#SBATCH --output=/fsx/zhuokai/verl/slurm/minimal_rl_grpo_temp_1_2.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/minimal_rl_grpo_temp_1_2.stderr
 
 
 # export VLLM_ATTENTION_BACKEND=XFORMERS
 data=numina_math
 project_name="minimal_rl_numina_math"
 algorithm=grpo
-# model=Qwen2.5-Math-1.5B
-# model_name_or_path=Qwen/$model
-model=Llama-3.2-1B-Instruct
-model_name_or_path=meta-llama/$model
+model=Qwen2.5-Math-1.5B
+model_name_or_path=Qwen/$model
+# model=Llama-3.2-1B-Instruct
+# model_name_or_path=meta-llama/$model
 rollout_n=4
 # for mean@K computation
 k_max=16
