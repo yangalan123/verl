@@ -13,13 +13,10 @@
 data=numina_math
 project_name="minimal_rl_numina_math"
 algorithm=grpo
-# model=Qwen2.5-Math-1.5B
-# model_name_or_path=Qwen/$model
+model=Qwen2.5-Math-1.5B
+model_name_or_path=Qwen/$model
 # model=Llama-3.2-1B-Instruct
 # model_name_or_path=meta-llama/$model
-model=OctoThinker-1B-Hybrid-Base
-model_name_or_path=OctoThinker/$model
-tokenizer=meta-llama/Llama-3.2-1B-Instruct
 rollout_n=4
 # for mean@K computation
 k_max=16
