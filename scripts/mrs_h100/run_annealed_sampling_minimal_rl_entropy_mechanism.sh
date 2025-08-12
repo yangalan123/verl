@@ -14,7 +14,7 @@ project_name="minimal_rl_numina_math"
 algorithm=grpo
 # [TODO for Zhuokai]: change the model to other models, if we have more compute available
 model=Qwen2.5-Math-1.5B
-# model_name_or_path=Qwen/$model
+model_name_or_path=Qwen/$model
 # model=Llama-3.2-1B-Instruct
 # model_name_or_path=meta-llama/$model
 #model=OctoThinker-1B-Hybrid-Base
