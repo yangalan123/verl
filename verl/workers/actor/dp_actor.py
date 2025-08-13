@@ -396,7 +396,7 @@ class DataParallelPPOActor(BasePPOActor):
         ]
         if self.config.use_kl_loss:
             select_keys.append("ref_log_prob")
-        if self.config.tis_imp_ratio_cap > 0:
+        if self.config.imp_ratio_cap > 0:
             assert "rollout_log_probs" in data.batch.keys(), (
                 "Truncated Importance Sampling (TIS) requires to configure "
                 "`actor_rollout_ref.rollout.calculate_log_probs=True` "
