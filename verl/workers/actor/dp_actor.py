@@ -393,6 +393,7 @@ class DataParallelPPOActor(BasePPOActor):
             "position_ids",
             "old_log_probs",
             "advantages",
+            "rollout_log_probs"
         ]
         if self.config.use_kl_loss:
             select_keys.append("ref_log_prob")
@@ -471,6 +472,7 @@ class DataParallelPPOActor(BasePPOActor):
                         data = data.to(get_device_id())  # actor device is cpu when using offload
                     response_mask = data["response_mask"]
                     old_log_prob = data["old_log_probs"]
+                    rollout_log_probs = data["rollout_log_probs"] if "rollout_log_probs" in data else None
                     advantages = data["advantages"]
 
                     clip_ratio = self.config.clip_ratio
@@ -505,6 +507,8 @@ class DataParallelPPOActor(BasePPOActor):
                             cliprange_high=clip_ratio_high,
                             clip_ratio_c=clip_ratio_c,
                             loss_agg_mode=loss_agg_mode,
+                            rollout_log_probs=rollout_log_probs,
+                            imp_ratio_cap=self.config.imp_ratio_cap,
                         )
 
                     else:
