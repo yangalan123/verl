@@ -4,9 +4,10 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=annealed_sampling_minimal_rl_negexp_tis_decay_25_octothinker
-#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_negexp_tis_decay_25_octothinker.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_negexp_tis_decay_25_octothinker.stderr
+#SBATCH --account mrs_cluster_access
+#SBATCH --job-name=annealed_sampling_minimal_rl_negexp_tis_decay_25_llama
+#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_negexp_tis_decay_25_llama.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_negexp_tis_decay_25_llama.stderr
 
 
 data=numina_math
@@ -14,11 +15,12 @@ project_name="minimal_rl_numina_math"
 algorithm=grpo
 # model=Qwen2.5-Math-1.5B
 # model_name_or_path=Qwen/$model
-# model=Llama-3.2-1B-Instruct
-# model_name_or_path=meta-llama/$model
-model=OctoThinker-1B-Hybrid-Base
-model_name_or_path=OctoThinker/$model
-tokenizer=meta-llama/Llama-3.2-1B-Instruct
+model=Llama-3.2-1B-Instruct
+model_name_or_path=meta-llama/$model
+# model=OctoThinker-1B-Hybrid-Base
+# model_name_or_path=OctoThinker/$model
+# tokenizer=meta-llama/Llama-3.2-1B-Instruct
+# data.tokenizer=$tokenizer \
 # for grpo rollout
 rollout_n=4
 # for mean@K computation
@@ -59,7 +61,6 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     data.max_response_length=3072 \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
-    data.tokenizer=$tokenizer \
     actor_rollout_ref.model.path=$model_name_or_path \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
@@ -78,8 +79,8 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.annealed_sampling.stability_temp=${end_temp} \
     actor_rollout_ref.rollout.annealed_sampling.decay_freq=${decay_freq} \
     actor_rollout_ref.rollout.annealed_sampling.warmup_period=${warmup_period} \
-    actor_rollout_ref.actor.imp_ratio_cap=2.0 \ # for truncated importance sampling, see https://fengyao.notion.site/off-policy-rl
-    actor_rollout_ref.rollout.calculate_log_probs=True \ # for truncated importance sampling, see https://fengyao.notion.site/off-policy-rl
+    actor_rollout_ref.actor.imp_ratio_cap=2.0 \
+    actor_rollout_ref.rollout.calculate_log_probs=True \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
