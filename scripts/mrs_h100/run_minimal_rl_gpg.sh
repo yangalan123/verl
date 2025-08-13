@@ -4,9 +4,9 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=minimal_rl_gpg_temp_1_2_qwen2.5
-#SBATCH --output=/fsx/zhuokai/verl/slurm/minimal_rl_gpg_temp_1_2_qwen2.5.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/minimal_rl_gpg_temp_1_2_qwen2.5.stderr
+#SBATCH --job-name=minimal_rl_gpg_temp_1_0_qwen2.5
+#SBATCH --output=/fsx/zhuokai/verl/slurm/minimal_rl_gpg_temp_1_0_qwen2.5.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/minimal_rl_gpg_temp_1_0_qwen2.5.stderr
 
 
 data=numina_math
@@ -14,7 +14,7 @@ project_name="minimal_rl_numina_math"
 algorithm=gpg
 # [TODO for Zhuokai]: change the model to other models, if we have more compute available
 model=Qwen2.5-Math-1.5B
-# model_name_or_path=Qwen/$model
+model_name_or_path=Qwen/$model
 # model=Llama-3.2-1B-Instruct
 # model_name_or_path=meta-llama/$model
 #model=OctoThinker-1B-Hybrid-Base
@@ -30,7 +30,7 @@ k_max=16
 num_gpu_per_node=8
 save_freq=10
 test_freq=10
-temperature=1.2
+temperature=1.0
 experiment_name="gpg_baseline_temperature_${temperature}_${model}_zzk"
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
 ROOT_DIR=/fsx/zhuokai/verl/

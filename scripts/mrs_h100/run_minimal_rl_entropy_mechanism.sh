@@ -14,7 +14,7 @@ project_name="minimal_rl_numina_math"
 algorithm=grpo
 # [TODO for Zhuokai]: change the model to other models, if we have more compute available
 model=Qwen2.5-Math-1.5B
-# model_name_or_path=Qwen/$model
+model_name_or_path=Qwen/$model
 # model=Llama-3.2-1B-Instruct
 # model_name_or_path=meta-llama/$model
 #model=OctoThinker-1B-Hybrid-Base
@@ -41,13 +41,6 @@ loss_mode="clip_cov"
 enable_filter_groups=True
 filter_groups_metric=acc
 # n_resp_per_prompt=8
-# model_name_or_path=Qwen/$model
-# model=Llama-3.2-1B-Instruct
-# model_name_or_path=meta-llama/$model
-#model=OctoThinker-1B-Hybrid-Base
-# model_name_or_path=OctoThinker/$model
-# tokenizer=meta-llama/Llama-3.2-1B-Instruct
-#     data.tokenizer=$tokenizer \
 # for grpo rollout
 rollout_n=4
 # rollout_n=16 (to conform better with DAPO)
@@ -89,7 +82,7 @@ mkdir -p $log_dir
     # actor_rollout_ref.actor.kl_loss_coef=0.001 \
     # actor_rollout_ref.actor.kl_loss_type=low_var_kl \
 
-PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
+PYTHONUNBUFFERED=1 VLLM_USE_V1=0 HYDRA_FULL_ERROR=1 python3 -m recipe.entropy.main_entropy \
     algorithm.adv_estimator=$algorithm \
     data.train_files="$train_files" \
     data.val_files="$test_files" \
