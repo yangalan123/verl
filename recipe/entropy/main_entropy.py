@@ -36,7 +36,6 @@ def run_ppo(config) -> None:
                     "TOKENIZERS_PARALLELISM": "true",
                     "NCCL_DEBUG": "WARN",
                     "VLLM_LOGGING_LEVEL": "WARN",
-                    "WANDB_API_KEY": "YOUR_WANDB_API_KEY",
                 }
             },
             num_cpus=config.ray_init.num_cpus,
