@@ -4,23 +4,25 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=annealed_sampling_minimal_rl_dapo_temp_0_6_octothinker
-#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_dapo_temp_0_6_octothinker.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_dapo_temp_0_6_octothinker.stderr
+#SBATCH --job-name=dapo_baseline_temp_1_0_rollout_n_8_qwen2_5_7b
+#SBATCH --output=/fsx/zhuokai/verl/slurm/dapo_baseline_temp_1_0_rollout_n_8_qwen2_5_7b.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/dapo_baseline_temp_1_0_rollout_n_8_qwen2_5_7b.stderr
 
 
 data=numina_math
 project_name="minimal_rl_numina_math"
 algorithm=grpo
 # model=Qwen2.5-Math-1.5B
-# model_name_or_path=Qwen/$model
+model=Qwen2.5-Math-7B
+model_name_or_path=Qwen/$model
 # model=Llama-3.2-1B-Instruct
 # model_name_or_path=meta-llama/$model
-model=OctoThinker-1B-Hybrid-Base
-model_name_or_path=OctoThinker/$model
-tokenizer=meta-llama/Llama-3.2-1B-Instruct
+# model=OctoThinker-1B-Hybrid-Base
+# model_name_or_path=OctoThinker/$model
+# tokenizer=meta-llama/Llama-3.2-1B-Instruct
+# data.tokenizer=$tokenizer \
 # for grpo rollout
-rollout_n=4
+rollout_n=8
 # rollout_n=16 (to conform better with DAPO)
 # for mean@K computation
 k_max=16
@@ -33,8 +35,8 @@ warmup_period=10
 num_gpu_per_node=8
 save_freq=10
 test_freq=10
-temperature=0.6
-experiment_name="dapo_baseline_without_dynamic_sampling_temperature_${temperature}_${model}_zzk"
+temperature=1.0
+experiment_name="dapo_baseline_without_dynamic_sampling_temperature_${temperature}_${model}_rollout_n_${rollout_n}_zzk"
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
 ROOT_DIR=/fsx/zhuokai/verl/
 
@@ -66,7 +68,6 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     data.max_response_length=3072 \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
-    data.tokenizer=$tokenizer \
     actor_rollout_ref.model.path=$model_name_or_path \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
