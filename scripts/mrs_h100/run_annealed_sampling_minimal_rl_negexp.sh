@@ -4,23 +4,24 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=annealed_sampling_minimal_rl_negexp_decay_25_octothinker
-#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_negexp_decay_25_octothinker.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_negexp_decay_25_octothinker.stderr
+#SBATCH --job-name=annealed_sampling_negexp_decay_25_rollout_n_8_qwen2_5_7b
+#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_decay_25_rollout_n_8_qwen2_5_7b.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_decay_25_rollout_n_8_qwen2_5_7b.stderr
 
 
 data=numina_math
 project_name="minimal_rl_numina_math"
 algorithm=grpo
 # model=Qwen2.5-Math-1.5B
-# model_name_or_path=Qwen/$model
+model=Qwen2.5-Math-7B
+model_name_or_path=Qwen/$model
 # model=Llama-3.2-1B-Instruct
 # model_name_or_path=meta-llama/$model
-model=OctoThinker-1B-Hybrid-Base
-model_name_or_path=OctoThinker/$model
-tokenizer=meta-llama/Llama-3.2-1B-Instruct
+# model=OctoThinker-1B-Hybrid-Base
+# model_name_or_path=OctoThinker/$model
+# tokenizer=meta-llama/Llama-3.2-1B-Instruct
 # for grpo rollout
-rollout_n=4
+rollout_n=8
 # for mean@K computation
 k_max=16
 # config for annealed sampling
@@ -34,9 +35,9 @@ save_freq=10
 test_freq=10
 strategy="negexp"
 if [ $warmup_period -eq 0 ]; then
-    experiment_name="annealed_sampling_minimal_rl_negexp_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_${strategy}_${model}_zzk"
+    experiment_name="annealed_sampling_minimal_rl_negexp_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_${strategy}_rollout_n_${rollout_n}_${model}_zzk"
 else
-    experiment_name="annealed_sampling_minimal_rl_negexp_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_warmup_period_${warmup_period}_${strategy}_${model}_zzk"
+    experiment_name="annealed_sampling_minimal_rl_negexp_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_warmup_period_${warmup_period}_${strategy}_rollout_n_${rollout_n}_${model}_zzk"
 fi
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
 ROOT_DIR=/fsx/zhuokai/verl
@@ -59,7 +60,6 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     data.max_response_length=3072 \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
-    data.tokenizer=$tokenizer \
     actor_rollout_ref.model.path=$model_name_or_path \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
