@@ -35,7 +35,7 @@ warmup_period=10
 num_gpu_per_node=8
 save_freq=10
 test_freq=10
-temperature=0.6
+temperature=1.0
 experiment_name="dapo_baseline_without_dynamic_sampling_temperature_${temperature}_${model}_rollout_n_${rollout_n}_zzk"
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
 ROOT_DIR=/fsx/zhuokai/verl/
