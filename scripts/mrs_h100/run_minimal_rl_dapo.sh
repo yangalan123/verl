@@ -4,9 +4,9 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=dapo_baseline_temp_1_0_rollout_n_8_qwen2_5_7b
-#SBATCH --output=/fsx/zhuokai/verl/slurm/dapo_baseline_temp_1_0_rollout_n_8_qwen2_5_7b.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/dapo_baseline_temp_1_0_rollout_n_8_qwen2_5_7b.stderr
+#SBATCH --job-name=baseline_dapo_temp_1_2_rollout_n_8_qwen2_5_7b
+#SBATCH --output=/fsx/zhuokai/verl/slurm/baseline_dapo_temp_1_2_rollout_n_8_qwen2_5_7b.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/baseline_dapo_temp_1_2_rollout_n_8_qwen2_5_7b.stderr
 
 
 data=numina_math
@@ -16,6 +16,7 @@ algorithm=grpo
 model=Qwen2.5-Math-7B
 model_name_or_path=Qwen/$model
 # model=Llama-3.2-1B-Instruct
+# model=Meta-Llama-3-8B-Instruct
 # model_name_or_path=meta-llama/$model
 # model=OctoThinker-1B-Hybrid-Base
 # model_name_or_path=OctoThinker/$model
@@ -35,7 +36,7 @@ warmup_period=10
 num_gpu_per_node=8
 save_freq=10
 test_freq=10
-temperature=1.0
+temperature=1.2
 experiment_name="dapo_baseline_without_dynamic_sampling_temperature_${temperature}_${model}_rollout_n_${rollout_n}_zzk"
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
 ROOT_DIR=/fsx/zhuokai/verl/
@@ -83,7 +84,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.8 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
     actor_rollout_ref.rollout.n=${rollout_n} \
     actor_rollout_ref.rollout.val_kwargs.n=${k_max} \
     actor_rollout_ref.rollout.temperature=${temperature} \
