@@ -4,20 +4,20 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=annealed_sampling_negexp_decay_25_rollout_n_8_llama_3_8b
-#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_decay_25_rollout_n_8_llama_3_8b.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_decay_25_rollout_n_8_llama_3_8b.stderr
+#SBATCH --job-name=annealed_sampling_negexp_decay_25_rollout_n_8_qwen2_5_1_5b
+#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_decay_25_rollout_n_8_qwen2_5_1_5b.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_decay_25_rollout_n_8_qwen2_5_1_5b.stderr
 
 
 data=numina_math
 project_name="minimal_rl_numina_math"
 algorithm=grpo
-# model=Qwen2.5-Math-1.5B
+model=Qwen2.5-Math-1.5B
 # model=Qwen2.5-Math-7B
-# model_name_or_path=Qwen/$model
+model_name_or_path=Qwen/$model
 # model=Llama-3.2-1B-Instruct
-model=Meta-Llama-3-8B-Instruct
-model_name_or_path=meta-llama/$model
+# model=Meta-Llama-3-8B-Instruct
+# model_name_or_path=meta-llama/$model
 # model=OctoThinker-1B-Hybrid-Base
 # model_name_or_path=OctoThinker/$model
 # tokenizer=meta-llama/Llama-3.2-1B-Instruct
