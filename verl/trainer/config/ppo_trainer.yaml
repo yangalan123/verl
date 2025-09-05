@@ -612,6 +612,11 @@ actor_rollout_ref:
       # Whether to enable adaptive decay based on historical performance (default: False)
       adaptive_decay: False
 
+      # Whether to apply temperature correction for old policy log probability computation (default: False)
+      # When enabled, old_log_prob computation will use the same annealed temperature scaling
+      # as used during generation, providing an alternative to imp_ratio_cap for importance ratio correction
+      old_policy_temperature_correction: False
+
 
 # configs for the critic
 critic:
