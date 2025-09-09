@@ -609,6 +609,9 @@ actor_rollout_ref:
       # Warmup period: if output length is less than this, do not apply annealing (default: 10)
       warmup_period: 10
 
+      # Factor by which decay_freq increases with global_step (default: 5)
+      decay_freq_increase_factor: 5
+
       # Whether to enable adaptive decay based on historical performance (default: False)
       adaptive_decay: False
 
