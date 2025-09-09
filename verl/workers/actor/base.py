@@ -37,14 +37,12 @@ class BasePPOActor(ABC):
         self.config = config
 
     @abstractmethod
-    def compute_log_prob(self, data: DataProto, calculate_entropy=False, old_policy=False) -> torch.Tensor:
+    def compute_log_prob(self, data: DataProto) -> torch.Tensor:
         """Compute logits given a batch of data.
 
         Args:
             data (DataProto): a batch of data represented by DataProto. It must contain key ```input_ids```,
                 ```attention_mask``` and ```position_ids```.
-            calculate_entropy (bool): Whether to calculate entropy
-            old_policy (bool): Whether this is for old policy computation (affects temperature scaling for annealed sampling)
 
         Returns:
             DataProto: a DataProto containing the key ```log_probs```

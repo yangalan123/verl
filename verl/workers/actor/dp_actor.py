@@ -359,7 +359,7 @@ class DataParallelPPOActor(BasePPOActor):
         return grad_norm
 
     @GPUMemoryLogger(role="dp actor", logger=logger)
-    def compute_log_prob(self, data: DataProto, calculate_entropy=False, old_policy=False) -> torch.Tensor:
+    def compute_log_prob(self, data: DataProto, calculate_entropy=False) -> torch.Tensor:
         """Compute the log probability of the responses given input_ids, attention_mask and position_ids
 
         Args:
@@ -374,12 +374,13 @@ class DataParallelPPOActor(BasePPOActor):
 
                 ``responses``:  tensor of shape [batch_size, response_length]. torch.int64.
 
-            calculate_entropy (bool): Whether to calculate entropy
-            old_policy (bool): Whether this is for old policy computation (affects temperature scaling for annealed sampling)
 
         Returns:
             torch.Tensor: the log_prob tensor
         """
+        # Read old_policy from meta_info for temperature scaling in annealed sampling
+        old_policy = data.meta_info.get("old_policy", False)
+        
         # set to eval
         self.actor_module.eval()
 
