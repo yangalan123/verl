@@ -142,7 +142,8 @@ def annealed_sampling_processor(token_ids: Union[list[int], tuple[int]], logits:
                                decay_freq: int = 50, global_step: int = 0,
                                decay_mode: str = 'both', warmup_period: int = 10,
                                adaptive_decay: bool = False, uid: Optional[str] = None,
-                               historical_manager: Optional[HistoricalDataManager] = None) -> torch.Tensor:
+                               historical_manager: Optional[HistoricalDataManager] = None,
+                               decay_freq_increase_factor: int = 5) -> torch.Tensor:
     """
     Annealed sampling logits processor for vLLM.
     
@@ -158,6 +159,7 @@ def annealed_sampling_processor(token_ids: Union[list[int], tuple[int]], logits:
         adaptive_decay: Whether to use adaptive decay based on historical performance
         uid: Unique identifier for the current trajectory (required for adaptive decay)
         historical_manager: Historical data manager instance (optional, will use global if None)
+        decay_freq_increase_factor: Factor by which decay_freq increases with global_step (default: 5)
     Returns:
         Modified logits tensor
     """
@@ -174,11 +176,11 @@ def annealed_sampling_processor(token_ids: Union[list[int], tuple[int]], logits:
         _exploration_temp = exploration_temp * np.exp(-global_step / decay_freq)
         current_temp = stability_temp + (_exploration_temp - stability_temp) * np.exp(-len(token_ids) / (20 * decay_freq))
     elif decay_mode == "both_v_1_5":
-        _decay_freq = min(decay_freq + 5 * global_step, 2000)
+        _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, 2000)
         current_temp = stability_temp + (exploration_temp - stability_temp) * np.exp(-len(token_ids) / (20 * _decay_freq))
     elif decay_mode == "negexp":
         # as we use -exp(x/d), we need to use a larger decay_freq to get a smaller temperature and to keep the temperature >= 0
-        _decay_freq = min(decay_freq + 5 * global_step, 40000)
+        _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, 40000)
         current_temp = 1 + exploration_temp - np.exp(len(token_ids) / (20 * _decay_freq))
         # avoid temperature < stability_temp
         current_temp = max(current_temp, stability_temp)

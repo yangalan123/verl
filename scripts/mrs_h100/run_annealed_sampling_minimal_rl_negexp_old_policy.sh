@@ -4,22 +4,32 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=annealed_sampling_minimal_rl_both_v1_5_decay_2000
-#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_both_v1_5_decay_2000.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_both_v1_5_decay_2000.stderr
+#SBATCH --job-name=annealed_sampling_negexp_old_policy_rollout_n_4_qwen_2_5_1_5b
+#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_old_policy_rollout_n_4_qwen_2_5_1_5b.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_old_policy_rollout_n_4_qwen_2_5_1_5b.stderr
 
 
 data=numina_math
 project_name="minimal_rl_numina_math"
 algorithm=grpo
 model=Qwen2.5-Math-1.5B
+# model=Qwen2.5-Math-7B
 model_name_or_path=Qwen/$model
+# model=Llama-3.2-1B-Instruct
+# model=Meta-Llama-3-8B-Instruct
+# model_name_or_path=meta-llama/$model
+# model=OctoThinker-1B-Hybrid-Base
+# model_name_or_path=OctoThinker/$model
+# tokenizer=meta-llama/Llama-3.2-1B-Instruct
 # for grpo rollout
 rollout_n=4
+lr=1e-6  # when n=4
+# lr=2e-6  # when n=8
+# lr=4e-6  # when n=16
 # for mean@K computation
 k_max=16
 # config for annealed sampling
-decay_freq=2000
+decay_freq=25
 start_temp=1.2
 end_temp=0.1
 warmup_period=10
@@ -27,11 +37,11 @@ warmup_period=10
 num_gpu_per_node=8
 save_freq=10
 test_freq=10
-strategy="both_v_1_5"
+strategy="negexp"
 if [ $warmup_period -eq 0 ]; then
-    experiment_name="annealed_sampling_minimal_rl_both_v1_5_grpo_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_${strategy}_zzk"
+    experiment_name="annealed_sampling_minimal_rl_negexp_old_policy_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_${strategy}_rollout_n_${rollout_n}_lr_${lr}_${model}_zzk"
 else
-    experiment_name="annealed_sampling_minimal_rl_both_v1_5_grpo_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_warmup_period_${warmup_period}_${strategy}_zzk"
+    experiment_name="annealed_sampling_minimal_rl_negexp_old_policy_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_warmup_period_${warmup_period}_${strategy}_rollout_n_${rollout_n}_lr_${lr}_${model}_zzk"
 fi
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
 ROOT_DIR=/fsx/zhuokai/verl
@@ -55,7 +65,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
     actor_rollout_ref.model.path=$model_name_or_path \
-    actor_rollout_ref.actor.optim.lr=1e-6 \
+    actor_rollout_ref.actor.optim.lr=$lr \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.ppo_mini_batch_size=256 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=4 \
@@ -72,11 +82,11 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.annealed_sampling.stability_temp=${end_temp} \
     actor_rollout_ref.rollout.annealed_sampling.decay_freq=${decay_freq} \
     actor_rollout_ref.rollout.annealed_sampling.warmup_period=${warmup_period} \
-    actor_rollout_ref.rollout.annealed_sampling.decay_freq_increase_factor=5 \
+    actor_rollout_ref.rollout.annealed_sampling.old_policy_temperature_correction=True \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
     actor_rollout_ref.rollout.n=${rollout_n} \
     actor_rollout_ref.rollout.val_kwargs.n=${k_max} \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \
