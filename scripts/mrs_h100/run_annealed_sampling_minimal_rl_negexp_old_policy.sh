@@ -4,9 +4,9 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=annealed_sampling_negexp_old_policy_rollout_n_4_qwen_2_5_1_5b
-#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_old_policy_rollout_n_4_qwen_2_5_1_5b.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_old_policy_rollout_n_4_qwen_2_5_1_5b.stderr
+#SBATCH --job-name=old_policy_rollout_n_4_decay_freq_increase_factor_0_qwen_2_5_1b
+#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_old_policy_rollout_n_4_decay_freq_increase_factor_0_qwen_2_5_1b.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_old_policy_rollout_n_4_decay_freq_increase_factor_0_qwen_2_5_1b.stderr
 
 
 data=numina_math
@@ -26,6 +26,7 @@ rollout_n=4
 lr=1e-6  # when n=4
 # lr=2e-6  # when n=8
 # lr=4e-6  # when n=16
+decay_freq_increase_factor=0
 # for mean@K computation
 k_max=16
 # config for annealed sampling
@@ -39,9 +40,9 @@ save_freq=10
 test_freq=10
 strategy="negexp"
 if [ $warmup_period -eq 0 ]; then
-    experiment_name="annealed_sampling_minimal_rl_negexp_old_policy_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_${strategy}_rollout_n_${rollout_n}_lr_${lr}_${model}_zzk"
+    experiment_name="annealed_sampling_minimal_rl_negexp_old_policy_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_${strategy}_rollout_n_${rollout_n}_lr_${lr}_${model}_decay_freq_increase_factor_${decay_freq_increase_factor}_zzk"
 else
-    experiment_name="annealed_sampling_minimal_rl_negexp_old_policy_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_warmup_period_${warmup_period}_${strategy}_rollout_n_${rollout_n}_lr_${lr}_${model}_zzk"
+    experiment_name="annealed_sampling_minimal_rl_negexp_old_policy_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_warmup_period_${warmup_period}_${strategy}_rollout_n_${rollout_n}_lr_${lr}_${model}_decay_freq_increase_factor_${decay_freq_increase_factor}_zzk"
 fi
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
 ROOT_DIR=/fsx/zhuokai/verl
@@ -82,6 +83,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.annealed_sampling.stability_temp=${end_temp} \
     actor_rollout_ref.rollout.annealed_sampling.decay_freq=${decay_freq} \
     actor_rollout_ref.rollout.annealed_sampling.warmup_period=${warmup_period} \
+    actor_rollout_ref.rollout.annealed_sampling.decay_freq_increase_factor=${decay_freq_increase_factor} \
     actor_rollout_ref.rollout.annealed_sampling.old_policy_temperature_correction=True \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
