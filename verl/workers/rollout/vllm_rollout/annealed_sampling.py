@@ -4,6 +4,18 @@ from typing import Union, Dict, Optional
 import pickle
 import os
 from collections import defaultdict
+try:
+    from vllm.v1.sample.logits_processor import (
+        AdapterLogitsProcessor, # Wrapper base-class
+        RequestLogitsProcessor, # Request-level logitsproc type annotation
+    )
+except ImportError as e:
+    print(f"Warning: vllm.v1.sample.logits_processor is not installed, using v0 API instead")
+    AdapterLogitsProcessor = None
+    RequestLogitsProcessor = None
+    if "VLLM_USE_V1" not in os.environ:
+        os.environ["VLLM_USE_V1"] = "0"
+from vllm import SamplingParams
 
 
 class HistoricalDataManager:
@@ -135,6 +147,87 @@ def get_historical_manager(cache_dir: Optional[str] = None) -> HistoricalDataMan
     if _historical_manager is None:
         _historical_manager = HistoricalDataManager(cache_dir=cache_dir)
     return _historical_manager
+
+# Example Usage for LogitsProcessor in V1 API (waiting to check whether this implementation is correct in InferenceTime Scaling Experiment):
+# llm = LLM(
+            #     model=args.model_name_or_path,
+            #     tensor_parallel_size=len(available_gpus) // args.pipeline_parallel_size,
+            #     pipeline_parallel_size=args.pipeline_parallel_size,
+            #     trust_remote_code=True,
+            #     gpu_memory_utilization=args.gpu_memory_utilization,
+            #     max_logprobs=100,
+            #     logits_processors=[WrapperAdapterLogitsProcessor]
+            # )
+# sampling_param = SamplingParams(
+        #     temperature=args.temperature,
+        #     top_p=args.top_p,
+        #     max_tokens=args.max_tokens_per_call,
+        #     logprobs=50,
+        #     n=1,
+        #     stop=stop_words,
+        #     stop_token_ids=(
+        #         [151645, 151643] if "qwen2" in args.model_name_or_path.lower() else None
+        #     ),
+        #     extra_args={
+        #         "exploration_temp": args.annealed_sampling_exploration_temp,
+        #         "stability_temp": args.annealed_sampling_stability_temp,
+        #         "decay_freq": args.annealed_sampling_decay_freq,
+        #         "global_step": args.annealed_sampling_global_step,
+        #         "decay_mode": args.annealed_sampling_decay_mode,
+        #         "warmup_period": args.annealed_sampling_warmup_period,
+        #         "decay_freq_increase_factor": args.annealed_sampling_decay_freq_increase_factor,
+        #     },
+        # )
+# then, use normal llm.generate(..., sampling_param=sampling_param)
+
+class AnnealedSamplingProcessor:
+    def __init__(self, exploration_temp: float = 1.0, stability_temp: float = 0.1, decay_freq: int = 50, global_step: int = 0, decay_mode: str = "both", warmup_period: int = 10, decay_freq_increase_factor: int = 5):
+        self.exploration_temp = exploration_temp
+        self.stability_temp = stability_temp
+        self.decay_freq = decay_freq
+        self.global_step = global_step
+        self.decay_mode = decay_mode
+        self.warmup_period = warmup_period
+        self.decay_freq_increase_factor = decay_freq_increase_factor
+    
+    def __call__(self, token_ids: Union[list[int], tuple[int]], logits: torch.Tensor) -> torch.Tensor:
+        return annealed_sampling_processor(token_ids, logits, 
+            exploration_temp=self.exploration_temp,
+            stability_temp=self.stability_temp,
+            decay_freq=self.decay_freq,
+            global_step=self.global_step,
+            decay_mode=self.decay_mode,
+            warmup_period=self.warmup_period,
+            decay_freq_increase_factor=self.decay_freq_increase_factor
+        )
+
+if AdapterLogitsProcessor is not None and RequestLogitsProcessor is not None:
+    class WrapperAdapterLogitsProcessor(AdapterLogitsProcessor):
+        def is_argmax_invariant(self) -> bool:
+            return True
+        
+        def new_req_logits_processor(self, params: SamplingParams) -> Optional[RequestLogitsProcessor]:
+            exploration_temp = params.extra_args and params.extra_args.get("exploration_temp")
+            if exploration_temp is not None:
+                stability_temp = params.extra_args and params.extra_args.get("stability_temp")
+                decay_freq = params.extra_args and params.extra_args.get("decay_freq")
+                global_step = params.extra_args and params.extra_args.get("global_step")
+                decay_mode = params.extra_args and params.extra_args.get("decay_mode")
+                warmup_period = params.extra_args and params.extra_args.get("warmup_period")
+                decay_freq_increase_factor = params.extra_args and params.extra_args.get("decay_freq_increase_factor")
+                # historical_manager is not supported in v1 API -- at least we do not want to make such a giant object as an extra_arg
+                # [TODO] we should find a way to support it, so we can move to EAD v2, one way is to override __init__ of WrapperAdapterLogitsProcessor
+                return AnnealedSamplingProcessor(
+                    exploration_temp=exploration_temp,
+                    stability_temp=stability_temp,
+                    decay_freq=decay_freq,
+                    global_step=global_step,
+                    decay_mode=decay_mode,
+                    warmup_period=warmup_period,
+                    decay_freq_increase_factor=decay_freq_increase_factor
+                )
+            return None
+
 
 
 def annealed_sampling_processor(token_ids: Union[list[int], tuple[int]], logits: torch.Tensor, 
