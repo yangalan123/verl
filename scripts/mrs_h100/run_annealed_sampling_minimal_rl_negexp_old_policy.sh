@@ -4,20 +4,20 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=old_policy_rollout_n_4_decay_freq_increase_factor_0_qwen_2_5_1b
-#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_old_policy_rollout_n_4_decay_freq_increase_factor_0_qwen_2_5_1b.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_old_policy_rollout_n_4_decay_freq_increase_factor_0_qwen_2_5_1b.stderr
+#SBATCH --job-name=old_policy_rollout_n_4_decay_freq_increase_factor_0_llama_3_2_1b
+#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_old_policy_rollout_n_4_decay_freq_increase_factor_0_llama_3_2_1b.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_old_policy_rollout_n_4_decay_freq_increase_factor_0_llama_3_2_1b.stderr
 
 
 data=numina_math
 project_name="minimal_rl_numina_math"
 algorithm=grpo
-model=Qwen2.5-Math-1.5B
+# model=Qwen2.5-Math-1.5B
 # model=Qwen2.5-Math-7B
-model_name_or_path=Qwen/$model
-# model=Llama-3.2-1B-Instruct
+# model_name_or_path=Qwen/$model
+model=Llama-3.2-1B-Instruct
 # model=Meta-Llama-3-8B-Instruct
-# model_name_or_path=meta-llama/$model
+model_name_or_path=meta-llama/$model
 # model=OctoThinker-1B-Hybrid-Base
 # model_name_or_path=OctoThinker/$model
 # tokenizer=meta-llama/Llama-3.2-1B-Instruct

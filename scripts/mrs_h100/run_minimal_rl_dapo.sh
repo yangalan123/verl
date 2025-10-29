@@ -4,26 +4,32 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=baseline_dapo_temp_1_2_rollout_n_8_qwen2_5_7b
-#SBATCH --output=/fsx/zhuokai/verl/slurm/baseline_dapo_temp_1_2_rollout_n_8_qwen2_5_7b.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/baseline_dapo_temp_1_2_rollout_n_8_qwen2_5_7b.stderr
+#SBATCH --job-name=baseline_dapo_temp_1_2_rollout_n_4_llama_3_1_8b_instruct
+#SBATCH --output=/fsx/zhuokai/verl/slurm/baseline_dapo_temp_1_2_rollout_n_4_llama_3_1_8b_instruct.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/baseline_dapo_temp_1_2_rollout_n_4_llama_3_1_8b_instruct.stderr
 
 
 data=numina_math
 project_name="minimal_rl_numina_math"
 algorithm=grpo
 # model=Qwen2.5-Math-1.5B
-model=Qwen2.5-Math-7B
-model_name_or_path=Qwen/$model
+# model=Qwen2.5-Math-7B
+# model_name_or_path=Qwen/$model
 # model=Llama-3.2-1B-Instruct
 # model=Meta-Llama-3-8B-Instruct
-# model_name_or_path=meta-llama/$model
+model=Llama-3.1-8B-Instruct
+model_name_or_path=meta-llama/$model
 # model=OctoThinker-1B-Hybrid-Base
 # model_name_or_path=OctoThinker/$model
 # tokenizer=meta-llama/Llama-3.2-1B-Instruct
 # data.tokenizer=$tokenizer \
 # for grpo rollout
-rollout_n=8
+rollout_n=4
+# rollout_n=8
+# rollout_n=16
+lr=1e-6  # for rollout_n=4
+# lr=2e-6  # for rollout_n=8
+# lr=4e-6  # for rollout_n=16
 # rollout_n=16 (to conform better with DAPO)
 # for mean@K computation
 k_max=16
@@ -70,7 +76,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
     actor_rollout_ref.model.path=$model_name_or_path \
-    actor_rollout_ref.actor.optim.lr=1e-6 \
+    actor_rollout_ref.actor.optim.lr=${lr} \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.ppo_mini_batch_size=256 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=4 \
@@ -84,7 +90,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
     actor_rollout_ref.rollout.n=${rollout_n} \
     actor_rollout_ref.rollout.val_kwargs.n=${k_max} \
     actor_rollout_ref.rollout.temperature=${temperature} \

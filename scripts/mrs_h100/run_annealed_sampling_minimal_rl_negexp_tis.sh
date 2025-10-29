@@ -4,19 +4,20 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=annealed_sampling_negexp_tis_end_temp_0_8_decay_25_qwen_2_5_7b
-#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_tis_end_temp_0_8_decay_25_qwen_2_5_7b.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_tis_end_temp_0_8_decay_25_qwen_2_5_7b.stderr
+#SBATCH --job-name=annealed_sampling_negexp_tis_end_temp_0_8_decay_25_llama_3_8b
+#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_tis_end_temp_0_8_decay_25_llama_3_8b.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_tis_end_temp_0_8_decay_25_llama_3_8b.stderr
 
 
 data=numina_math
 project_name="minimal_rl_numina_math"
 algorithm=grpo
 # model=Qwen2.5-Math-1.5B
-model=Qwen2.5-Math-7B
-model_name_or_path=Qwen/$model
+# model=Qwen2.5-Math-7B
+# model_name_or_path=Qwen/$model
 # model=Llama-3.2-1B-Instruct
-# model_name_or_path=meta-llama/$model
+model=Meta-Llama-3-8B-Instruct
+model_name_or_path=meta-llama/$model
 # model=OctoThinker-1B-Hybrid-Base
 # model_name_or_path=OctoThinker/$model
 # tokenizer=meta-llama/Llama-3.2-1B-Instruct
@@ -85,7 +86,7 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.65 \
     actor_rollout_ref.rollout.n=${rollout_n} \
     actor_rollout_ref.rollout.val_kwargs.n=${k_max} \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \

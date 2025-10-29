@@ -2,46 +2,55 @@
 
 #SBATCH --chdir=/fsx/zhuokai/verl/
 #SBATCH --gres=gpu:8
-#SBATCH --mem 128G
+#SBATCH --mem 512G
 #SBATCH -c 64
-#SBATCH --job-name=annealed_sampling_negexp_rollout_n_16_qwen_2_5_1_5b
-#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_rollout_n_16_qwen_2_5_1_5b.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_negexp_rollout_n_16_qwen_2_5_1_5b.stderr
+#SBATCH --job-name=ead_negexp_rollout_n_4_end_temp_0_8_deepseek_8B
+#SBATCH --output=/fsx/zhuokai/verl/slurm/ead_negexp_rollout_n_4_end_temp_0_8_deepseek_8B.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/ead_negexp_rollout_n_4_end_temp_0_8_deepseek_8B.stderr
 
 
 data=numina_math
 project_name="minimal_rl_numina_math"
 algorithm=grpo
-model=Qwen2.5-Math-1.5B
+# model=Qwen2.5-Math-1.5B
 # model=Qwen2.5-Math-7B
-model_name_or_path=Qwen/$model
+# model_name_or_path=Qwen/$model
 # model=Llama-3.2-1B-Instruct
 # model=Meta-Llama-3-8B-Instruct
+# model=Llama-3.1-8B-Instruct
 # model_name_or_path=meta-llama/$model
+model_name_or_path=deepseek-ai/DeepSeek-R1-Distill-Llama-8B
 # model=OctoThinker-1B-Hybrid-Base
 # model_name_or_path=OctoThinker/$model
 # tokenizer=meta-llama/Llama-3.2-1B-Instruct
 # for grpo rollout
-rollout_n=16
-# lr=1e-6  # when n=4
+rollout_n=4
+# rollout_n=8
+# rollout_n=16
+lr=1e-6  # when n=4
 # lr=2e-6  # when n=8
-lr=4e-6  # when n=16
+# lr=4e-6  # when n=16
+decay_freq_increase_factor=5
 # for mean@K computation
 k_max=16
 # config for annealed sampling
 decay_freq=25
+# decay_freq=5
 start_temp=1.2
-end_temp=0.1
+# end_temp=0.1
+# end_temp=0.6
+end_temp=0.8
+# end_temp=1.0
 warmup_period=10
 # config for cluster
 num_gpu_per_node=8
-save_freq=10
+save_freq=5
 test_freq=10
 strategy="negexp"
 if [ $warmup_period -eq 0 ]; then
-    experiment_name="annealed_sampling_minimal_rl_negexp_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_${strategy}_rollout_n_${rollout_n}_lr_${lr}_${model}_zzk"
+    experiment_name="annealed_sampling_minimal_rl_negexp_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_${strategy}_rollout_n_${rollout_n}_lr_${lr}_${model}_decay_freq_increase_factor_${decay_freq_increase_factor}_zzk"
 else
-    experiment_name="annealed_sampling_minimal_rl_negexp_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_warmup_period_${warmup_period}_${strategy}_rollout_n_${rollout_n}_lr_${lr}_${model}_zzk"
+    experiment_name="annealed_sampling_minimal_rl_negexp_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_warmup_period_${warmup_period}_${strategy}_rollout_n_${rollout_n}_lr_${lr}_${model}_decay_freq_increase_factor_${decay_freq_increase_factor}_zzk"
 fi
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
 ROOT_DIR=/fsx/zhuokai/verl
@@ -55,7 +64,7 @@ test_files="['$math_test_path']"
 log_dir=$ROOT_DIR/logs/${project_name}/${experiment_name}
 mkdir -p $log_dir
 
-PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
+PYTHONUNBUFFERED=1 NCCL_ASYNC_ERROR_HANDLING=1 NCCL_DEBUG=INFO VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
     data.train_files="$train_files" \
     data.val_files="$test_files" \
@@ -82,11 +91,11 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.annealed_sampling.stability_temp=${end_temp} \
     actor_rollout_ref.rollout.annealed_sampling.decay_freq=${decay_freq} \
     actor_rollout_ref.rollout.annealed_sampling.warmup_period=${warmup_period} \
-    actor_rollout_ref.rollout.annealed_sampling.decay_freq_increase_factor=5 \
+    actor_rollout_ref.rollout.annealed_sampling.decay_freq_increase_factor=${decay_freq_increase_factor} \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
     actor_rollout_ref.rollout.n=${rollout_n} \
     actor_rollout_ref.rollout.val_kwargs.n=${k_max} \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \

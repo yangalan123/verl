@@ -4,30 +4,30 @@
 #SBATCH --gres=gpu:8
 #SBATCH --mem 128G
 #SBATCH -c 64
-#SBATCH --job-name=annealed_sampling_minimal_rl_gpg_temp_1_2_qwen2.5
-#SBATCH --output=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_gpg_temp_1_2_qwen2.5.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/annealed_sampling_minimal_rl_gpg_temp_1_2_qwen2.5.stderr
+#SBATCH --job-name=dapo_baseline_temp_1_0_rollout_n_8_qwen2_5_7b
+#SBATCH --output=/fsx/zhuokai/verl/slurm/dapo_baseline_temp_1_0_rollout_n_8_qwen2_5_7b.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/dapo_baseline_temp_1_0_rollout_n_8_qwen2_5_7b.stderr
 
 
 data=numina_math
 project_name="minimal_rl_numina_math"
-algorithm=gpg
-# [TODO for Zhuokai]: change the model to other models, if we have more compute available
-model=Qwen2.5-Math-1.5B
+algorithm=grpo
+# model=Qwen2.5-Math-1.5B
+model=Qwen2.5-Math-7B
 model_name_or_path=Qwen/$model
 # model=Llama-3.2-1B-Instruct
 # model_name_or_path=meta-llama/$model
-#model=OctoThinker-1B-Hybrid-Base
+# model=OctoThinker-1B-Hybrid-Base
 # model_name_or_path=OctoThinker/$model
 # tokenizer=meta-llama/Llama-3.2-1B-Instruct
-#     data.tokenizer=$tokenizer \
+# data.tokenizer=$tokenizer \
 # for grpo rollout
-rollout_n=4
+rollout_n=8
 # rollout_n=16 (to conform better with DAPO)
 # for mean@K computation
 k_max=16
 # config for annealed sampling
-decay_freq=25
+decay_freq=250
 start_temp=1.2
 end_temp=0.1
 warmup_period=10
@@ -35,13 +35,8 @@ warmup_period=10
 num_gpu_per_node=8
 save_freq=10
 test_freq=10
-temperature=1.2
-strategy="negexp"
-if [ $warmup_period -eq 0 ]; then
-    experiment_name="annealed_sampling_gpg_${strategy}_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_${model}_zzk"
-else
-    experiment_name="annealed_sampling_gpg_${strategy}_explore_${start_temp}_stable_${end_temp}_decay_freq_${decay_freq}_warmup_period_${warmup_period}_${model}_zzk"
-fi
+temperature=1.0
+experiment_name="dapo_baseline_without_dynamic_sampling_temperature_${temperature}_${model}_rollout_n_${rollout_n}_zzk"
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
 ROOT_DIR=/fsx/zhuokai/verl/
 
@@ -63,15 +58,9 @@ mkdir -p $log_dir
     # actor_rollout_ref.actor.use_dynamic_bsz=True \
     # actor_rollout_ref.ref.log_prob_use_dynamic_bsz=True \
     # actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True \
-# [TODO for Zhuokai]: if we have time, we can add the following to the script
-# gpg with kl loss version
-# actor_rollout_ref.actor.use_kl_loss=False \
-# actor_rollout_ref.actor.kl_loss_coef=0.001 \
-# actor_rollout_ref.actor.kl_loss_type=low_var_kl \
 
 PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
-    actor_rollout_ref.actor.policy_loss.loss_mode=gpg \
     data.train_files="$train_files" \
     data.val_files="$test_files" \
     data.train_batch_size=1024 \
@@ -86,20 +75,15 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.actor.kl_loss_coef=0 \
-    actor_rollout_ref.actor.entropy_coeff=0 \
+    actor_rollout_ref.actor.clip_ratio_low=0.2 \
+    actor_rollout_ref.actor.clip_ratio_high=0.28 \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
-    actor_rollout_ref.rollout.annealed_sampling.enable=True \
-    actor_rollout_ref.rollout.annealed_sampling.decay_mode=${strategy} \
-    actor_rollout_ref.rollout.annealed_sampling.exploration_temp=${start_temp} \
-    actor_rollout_ref.rollout.annealed_sampling.stability_temp=${end_temp} \
-    actor_rollout_ref.rollout.annealed_sampling.decay_freq=${decay_freq} \
-    actor_rollout_ref.rollout.annealed_sampling.warmup_period=${warmup_period} \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.8 \
     actor_rollout_ref.rollout.n=${rollout_n} \
     actor_rollout_ref.rollout.val_kwargs.n=${k_max} \
     actor_rollout_ref.rollout.temperature=${temperature} \
