@@ -2,18 +2,20 @@
 
 #SBATCH --chdir=/fsx/zhuokai/verl/
 #SBATCH --gres=gpu:8
-#SBATCH --mem 128G
-#SBATCH -c 64
-#SBATCH --job-name=dapo_16k_baseline_dapo_temp_1_2_rollout_n_8_qwen2_5_7b
-#SBATCH --output=/fsx/zhuokai/verl/slurm/dapo_16k_baseline_dapo_temp_1_2_rollout_n_8_qwen2_5_7b.stdout
-#SBATCH --error=/fsx/zhuokai/verl/slurm/dapo_16k_baseline_dapo_temp_1_2_rollout_n_8_qwen2_5_7b.stderr
+#SBATCH --mem 512G
+#SBATCH -c 128
+#SBATCH --time=7-00:00:00
+#SBATCH --job-name=baseline_dapo_16k_temp_0_6_rollout_n_8_qwen3_8b
+#SBATCH --output=/fsx/zhuokai/verl/slurm/baseline_dapo_16k_temp_0_6_rollout_n_8_qwen3_8b.stdout
+#SBATCH --error=/fsx/zhuokai/verl/slurm/baseline_dapo_16k_temp_0_6_rollout_n_8_qwen3_8b.stderr
 
 
 #data=numina_math
 project_name="minimal_rl_dapo_16k"
 algorithm=grpo
 # model=Qwen2.5-Math-1.5B
-model=Qwen2.5-Math-7B
+# model=Qwen2.5-Math-7B
+model=Qwen3-8B
 model_name_or_path=Qwen/$model
 # model=Llama-3.2-1B-Instruct
 # model=Meta-Llama-3-8B-Instruct
@@ -36,8 +38,8 @@ k_max=16
 num_gpu_per_node=8
 save_freq=10
 test_freq=10
-temperature=1.2
-experiment_name="dapo_baseline_without_dynamic_sampling_temperature_${temperature}_${model}_rollout_n_${rollout_n}_zzk"
+temperature=0.6
+experiment_name="baseline_dapo_16k_without_dynamic_sampling_temperature_${temperature}_${model}_rollout_n_${rollout_n}_zzk"
 # where you run minimal_rl_step0_data_creation.sh -- fix ROOT_DIR, math_train_path, math_test_path below
 ROOT_DIR=/fsx/zhuokai/verl/
 
@@ -121,9 +123,9 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     algorithm.kl_ctrl.kl_coef=0.0 \
     trainer.critic_warmup=0 \
     reward_model.reward_manager=dapo \
-    reward_model.overlong_buffer.enable=${enable_overlong_buffer} \
-    reward_model.overlong_buffer.len=${overlong_buffer_len} \
-    reward_model.overlong_buffer.penalty_factor=${overlong_penalty_factor} \
+    +reward_model.overlong_buffer.enable=${enable_overlong_buffer} \
+    +reward_model.overlong_buffer.len=${overlong_buffer_len} \
+    +reward_model.overlong_buffer.penalty_factor=${overlong_penalty_factor} \
     trainer.logger=['console','wandb'] \
     trainer.project_name=${project_name} \
     trainer.experiment_name=${experiment_name} \
