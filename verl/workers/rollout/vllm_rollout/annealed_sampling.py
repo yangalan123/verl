@@ -271,12 +271,22 @@ def annealed_sampling_processor(token_ids: Union[list[int], tuple[int]], logits:
     elif decay_mode == "both_v_1_5":
         _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, 2000)
         current_temp = stability_temp + (exploration_temp - stability_temp) * np.exp(-len(token_ids) / (20 * _decay_freq))
+    elif decay_mode == "both_v_1_5_rev":
+        _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, 2000)
+        current_temp = exploration_temp + (stability_temp - exploration_temp) * np.exp(-len(token_ids) / (20 * _decay_freq))
     elif decay_mode == "negexp":
         # as we use -exp(x/d), we need to use a larger decay_freq to get a smaller temperature and to keep the temperature >= 0
         _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, 40000)
         current_temp = 1 + exploration_temp - np.exp(len(token_ids) / (20 * _decay_freq))
         # avoid temperature < stability_temp
         current_temp = max(current_temp, stability_temp)
+    elif decay_mode == "negexp_rev":
+        _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, 40000)
+        if len(token_ids) / (20 * _decay_freq) < np.log(exploration_temp - stability_temp):
+            current_temp = stability_temp + np.exp(len(token_ids) / (20 * _decay_freq))
+        else:
+            current_temp = exploration_temp
+        # current_temp = min(current_temp, exploration_temp)
     elif decay_mode == "steps_variant":
         # use the same temperature at all positions, no matter how long token_ids is
         # the temperature gradually increases from stability_temp to exploration_temp
