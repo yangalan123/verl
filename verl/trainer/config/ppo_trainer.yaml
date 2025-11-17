@@ -612,6 +612,12 @@ actor_rollout_ref:
       # Factor by which decay_freq increases with global_step (default: 5)
       decay_freq_increase_factor: 5
 
+      # Cap value for decay_freq in 'both_v_1_5' and 'both_v_1_5_rev' modes (default: 2000)
+      decay_freq_cap_small: 2000
+
+      # Cap value for decay_freq in 'negexp' and 'negexp_rev' modes (default: 40000)
+      decay_freq_cap_large: 40000
+
       # Whether to enable adaptive decay based on historical performance (default: False)
       adaptive_decay: False
 

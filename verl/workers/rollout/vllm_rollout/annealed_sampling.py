@@ -181,7 +181,7 @@ def get_historical_manager(cache_dir: Optional[str] = None) -> HistoricalDataMan
 # then, use normal llm.generate(..., sampling_param=sampling_param)
 
 class AnnealedSamplingProcessor:
-    def __init__(self, exploration_temp: float = 1.0, stability_temp: float = 0.1, decay_freq: int = 50, global_step: int = 0, decay_mode: str = "both", warmup_period: int = 10, decay_freq_increase_factor: int = 5):
+    def __init__(self, exploration_temp: float = 1.0, stability_temp: float = 0.1, decay_freq: int = 50, global_step: int = 0, decay_mode: str = "both", warmup_period: int = 10, decay_freq_increase_factor: int = 5, decay_freq_cap_small: int = 2000, decay_freq_cap_large: int = 40000):
         self.exploration_temp = exploration_temp
         self.stability_temp = stability_temp
         self.decay_freq = decay_freq
@@ -189,6 +189,8 @@ class AnnealedSamplingProcessor:
         self.decay_mode = decay_mode
         self.warmup_period = warmup_period
         self.decay_freq_increase_factor = decay_freq_increase_factor
+        self.decay_freq_cap_small = decay_freq_cap_small
+        self.decay_freq_cap_large = decay_freq_cap_large
     
     def __call__(self, token_ids: Union[list[int], tuple[int]], logits: torch.Tensor) -> torch.Tensor:
         return annealed_sampling_processor(token_ids, logits, 
@@ -198,7 +200,9 @@ class AnnealedSamplingProcessor:
             global_step=self.global_step,
             decay_mode=self.decay_mode,
             warmup_period=self.warmup_period,
-            decay_freq_increase_factor=self.decay_freq_increase_factor
+            decay_freq_increase_factor=self.decay_freq_increase_factor,
+            decay_freq_cap_small=self.decay_freq_cap_small,
+            decay_freq_cap_large=self.decay_freq_cap_large
         )
 
 if AdapterLogitsProcessor is not None and RequestLogitsProcessor is not None:
@@ -215,6 +219,8 @@ if AdapterLogitsProcessor is not None and RequestLogitsProcessor is not None:
                 decay_mode = params.extra_args and params.extra_args.get("decay_mode")
                 warmup_period = params.extra_args and params.extra_args.get("warmup_period")
                 decay_freq_increase_factor = params.extra_args and params.extra_args.get("decay_freq_increase_factor")
+                decay_freq_cap_small = params.extra_args and params.extra_args.get("decay_freq_cap_small", 2000)
+                decay_freq_cap_large = params.extra_args and params.extra_args.get("decay_freq_cap_large", 40000)
                 # historical_manager is not supported in v1 API -- at least we do not want to make such a giant object as an extra_arg
                 # [TODO] we should find a way to support it, so we can move to EAD v2, one way is to override __init__ of WrapperAdapterLogitsProcessor
                 return AnnealedSamplingProcessor(
@@ -224,7 +230,9 @@ if AdapterLogitsProcessor is not None and RequestLogitsProcessor is not None:
                     global_step=global_step,
                     decay_mode=decay_mode,
                     warmup_period=warmup_period,
-                    decay_freq_increase_factor=decay_freq_increase_factor
+                    decay_freq_increase_factor=decay_freq_increase_factor,
+                    decay_freq_cap_small=decay_freq_cap_small,
+                    decay_freq_cap_large=decay_freq_cap_large
                 )
             return None
 
@@ -236,7 +244,8 @@ def annealed_sampling_processor(token_ids: Union[list[int], tuple[int]], logits:
                                decay_mode: str = 'both', warmup_period: int = 10,
                                adaptive_decay: bool = False, uid: Optional[str] = None,
                                historical_manager: Optional[HistoricalDataManager] = None,
-                               decay_freq_increase_factor: int = 5) -> torch.Tensor:
+                               decay_freq_increase_factor: int = 5,
+                               decay_freq_cap_small: int = 2000, decay_freq_cap_large: int = 40000) -> torch.Tensor:
     """
     Annealed sampling logits processor for vLLM.
     
@@ -253,6 +262,8 @@ def annealed_sampling_processor(token_ids: Union[list[int], tuple[int]], logits:
         uid: Unique identifier for the current trajectory (required for adaptive decay)
         historical_manager: Historical data manager instance (optional, will use global if None)
         decay_freq_increase_factor: Factor by which decay_freq increases with global_step (default: 5)
+        decay_freq_cap_small: Cap value for decay_freq in 'both_v_1_5' and 'both_v_1_5_rev' modes (default: 2000)
+        decay_freq_cap_large: Cap value for decay_freq in 'negexp' and 'negexp_rev' modes (default: 40000)
     Returns:
         Modified logits tensor
     """
@@ -269,19 +280,19 @@ def annealed_sampling_processor(token_ids: Union[list[int], tuple[int]], logits:
         _exploration_temp = exploration_temp * np.exp(-global_step / decay_freq)
         current_temp = stability_temp + (_exploration_temp - stability_temp) * np.exp(-len(token_ids) / (20 * decay_freq))
     elif decay_mode == "both_v_1_5":
-        _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, 2000)
+        _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, decay_freq_cap_small)
         current_temp = stability_temp + (exploration_temp - stability_temp) * np.exp(-len(token_ids) / (20 * _decay_freq))
     elif decay_mode == "both_v_1_5_rev":
-        _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, 2000)
+        _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, decay_freq_cap_small)
         current_temp = exploration_temp + (stability_temp - exploration_temp) * np.exp(-len(token_ids) / (20 * _decay_freq))
     elif decay_mode == "negexp":
         # as we use -exp(x/d), we need to use a larger decay_freq to get a smaller temperature and to keep the temperature >= 0
-        _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, 40000)
+        _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, decay_freq_cap_large)
         current_temp = 1 + exploration_temp - np.exp(len(token_ids) / (20 * _decay_freq))
         # avoid temperature < stability_temp
         current_temp = max(current_temp, stability_temp)
     elif decay_mode == "negexp_rev":
-        _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, 40000)
+        _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, decay_freq_cap_large)
         if len(token_ids) / (20 * _decay_freq) < np.log(exploration_temp - stability_temp):
             current_temp = stability_temp + np.exp(len(token_ids) / (20 * _decay_freq))
         else:

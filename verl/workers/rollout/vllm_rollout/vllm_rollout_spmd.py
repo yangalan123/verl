@@ -206,6 +206,8 @@ class vLLMRollout(BaseRollout):
                 decay_mode = annealed_config.get('decay_mode', 'both')
                 warmup_period = annealed_config.get('warmup_period', 10)
                 decay_freq_increase_factor = annealed_config.get('decay_freq_increase_factor', 5)
+                decay_freq_cap_small = annealed_config.get('decay_freq_cap_small', 2000)
+                decay_freq_cap_large = annealed_config.get('decay_freq_cap_large', 40000)
                 
                 # Create and apply the annealed sampling monkey patch
                 annealed_logits_processor = lambda token_ids, logits: annealed_sampling_processor(
@@ -217,7 +219,9 @@ class vLLMRollout(BaseRollout):
                     global_step=kwargs.get('global_step', 0),
                     decay_mode=decay_mode,
                     warmup_period=warmup_period,
-                    decay_freq_increase_factor=decay_freq_increase_factor
+                    decay_freq_increase_factor=decay_freq_increase_factor,
+                    decay_freq_cap_small=decay_freq_cap_small,
+                    decay_freq_cap_large=decay_freq_cap_large
                 )
                 kwargs["logits_processors"] = [annealed_logits_processor]
 
@@ -349,6 +353,9 @@ class vLLMRollout(BaseRollout):
                     decay_freq = annealed_config.get('decay_freq', 50)
                     decay_mode = annealed_config.get('decay_mode', 'both')
                     warmup_period = annealed_config.get('warmup_period', 10)
+                    decay_freq_increase_factor = annealed_config.get('decay_freq_increase_factor', 5)
+                    decay_freq_cap_small = annealed_config.get('decay_freq_cap_small', 2000)
+                    decay_freq_cap_large = annealed_config.get('decay_freq_cap_large', 40000)
                     adaptive_decay = annealed_config.get('adaptive_decay', False)
                     
                     # Get UIDs for adaptive decay if needed
@@ -368,6 +375,9 @@ class vLLMRollout(BaseRollout):
                         global_step=global_step,
                         decay_mode=decay_mode,
                         warmup_period=warmup_period,
+                        decay_freq_increase_factor=decay_freq_increase_factor,
+                        decay_freq_cap_small=decay_freq_cap_small,
+                        decay_freq_cap_large=decay_freq_cap_large,
                         adaptive_decay=adaptive_decay,
                         uid=uids[0] if uids is not None else None  # For now, use first UID as placeholder
                     )
