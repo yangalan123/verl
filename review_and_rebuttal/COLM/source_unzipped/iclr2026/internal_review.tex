@@ -1,0 +1,877 @@
+
+\documentclass{article} % For LaTeX2e
+\usepackage{iclr2026_conference,times}
+
+% Optional math commands from https://github.com/goodfeli/dlbook_notation.
+\input{math_commands.tex}
+
+\usepackage[hidelinks]{hyperref}
+\hypersetup{
+    colorlinks=true,
+    citecolor=cyan,
+    linkcolor=blue
+}
+\usepackage[capitalize,noabbrev]{cleveref}
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{amssymb}
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{enumitem,kantlipsum}
+\crefname{section}{$\mathsection$}{$\mathsection\mathsection$}
+\Crefname{section}{$\mathsection$}{$\mathsection\mathsection$}
+\crefname{figure}{Fig.}{Fig.}
+\Crefname{figure}{Figure}{Figures}
+\usepackage[normalem]{ulem}
+\usepackage{bbm}
+\newcommand{\defeq}{\mathrel{\stackrel{\textnormal{\tiny def}}{=}}}
+\usepackage{array}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}m{#1}}
+\newcolumntype{H}{>{\setbox0=\hbox\bgroup}c<{\egroup}@{}}
+\usepackage{pifont}
+\usepackage{xspace}
+\usepackage{enumitem}
+\usepackage{wrapfig}
+\usepackage{subcaption}
+\usepackage{multirow}
+\usepackage{tikz}
+\newcommand{\circone}{\ding{172}\xspace}
+\newcommand{\circtwo}{\ding{173}\xspace}
+\newcommand{\circthree}{\ding{174}\xspace}
+\newcommand{\circfour}{\ding{175}\xspace}
+\newcommand{\outputVar}{\mathrm{Y}}
+\newcommand{\outputval}{y}
+\newcommand{\inputVar}{\mathrm{X}}
+\newcommand{\inputval}{x}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{corollary}{Corollary}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{hypothesis}{Hypo}
+\usepackage{csquotes}
+\newcommand{\ych}[1]{\textcolor{purple}{[#1 -Chenghao]}}
+\newcommand{\lin}[1]{\textcolor{blue}{[#1 -Lin]}}
+\newcommand{\cx}[1]{\textcolor{red}{[#1 -Chenxiao]}}
+\newcommand{\zz}[1]{{\color{magenta}[ZZ: {#1}]}}
+
+\newcommand{\algname}{Exploratory Annealed Decoding\xspace}
+
+\usepackage{tcolorbox} 
+\tcbset{
+    colback=yellow!10, % Background color
+    colframe=black, % Frame color
+    boxrule=0.5mm, % Frame thickness
+    arc=4mm, % Corner rounding
+    auto outer arc,
+    left=2mm,
+    right=2mm,
+    top=2mm,
+    bottom=2mm,
+}
+
+
+% \title{Synchronizing with the Generative Flow: Annealed Sampling for LLM Reasoning}
+\title{Let it Calm: Exploratory Annealed Decoding for Effective Exploration and Exploitation in RLVR}
+% \title{Let it Calm: Exploratory Annealed Decoding for Balanced RLVR Exploration-Exploitation}
+% Kool-Aid
+% \title{Let It Cool: Annealed Sampling for Efficient Exploration in RL with Verifiable Rewards}
+% Cooling Down the Chain of Thought: Annealed Sampling for Enhanced LLM Reasoning}
+
+
+% Authors must not appear in the submitted version. They should be hidden
+% as long as the \iclrfinalcopy macro remains commented out below.
+% Non-anonymous submissions will be rejected without review.
+
+\author{Antiquus S.~Hippocampus, Natalia Cerebro \& Amelie P. Amygdale \thanks{ Use footnote for providing further information
+about author (webpage, alternative address)---\emph{not} for acknowledging
+funding agencies.  Funding acknowledgements go at the end of the paper.} \\
+Department of Computer Science\\
+Cranberry-Lemon University\\
+Pittsburgh, PA 15213, USA \\
+\texttt{\{hippo,brain,jen\}@cs.cranberry-lemon.edu} \\
+\And
+Ji Q. Ren \& Yevgeny LeNet \\
+Department of Computational Neuroscience \\
+University of the Witwatersrand \\
+Joburg, South Africa \\
+\texttt{\{robot,net\}@wits.ac.za} \\
+\AND
+Coauthor \\
+Affiliation \\
+Address \\
+\texttt{email}
+}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to \LaTeX{} to determine where to break
+% the lines. Using \AND forces a linebreak at that point. So, if \LaTeX{}
+% puts 3 of 4 authors names on the first line, and the last on the second
+% line, try using \AND instead of \And before the third author name.
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+%\iclrfinalcopy % Uncomment for camera-ready version, but NOT for submission.
+\begin{document}
+
+
+\maketitle
+
+\begin{abstract}
+Reinforcement learning with verifiable rewards (RLVR) is a powerful paradigm for enhancing the reasoning capabilities of large language models (LLMs), yet its success hinges on effective exploration. 
+%
+Recent approaches to guide exploration have become increasingly complex and computationally expensive. 
+%
+Some methods rely on static, quantile-based entropy thresholds to make binary decisions about which tokens to update, while others employ expensive calculations, such as the covariance between log-probabilities and advantage functions, to closely regulate exploration at the token level.
+%
+% \ych{Sida: "micromanage" perhaps a bit vague and confusing}. 
+We argue that such complex, local heuristics might be unnecessary, as they fail to leverage the most fundamental dynamic of the generative process: 
+% as demonstrated by the ``Branching Factor'' (BF), 
+an LLM's output distribution naturally sharpens as generation progresses.
+%
+In this work, we propose a much simpler and effective strategy: \textbf{\algname} (EAD).
+%
+Instead of granularly controlling specific tokens, 
+% we synchronize the exploration strategy with this global generation dynamic,
+we align the exploration strategy with the overall generation process.
+% \ych{"global dynamic" is not clear for readers.}. 
+%
+Specifically, our method employs a simple temperature schedule that starts high at the beginning of a rollout and gradually cools down, providing continuous control over exploration. 
+%
+This naturally front-loading exploration in the initial high-entropy steps prevents detrimental late-stage branching without requiring any complex token-level calculations. 
+%
+We show that this simple yet effective approach generates higher-quality trajectories for RL training on the fly, while adding minimal overhead and outperforming more complex methods.
+%
+More broadly, our findings suggest that aligning with the intrinsic dynamics of the model is a more direct and efficient path to improving LLM reasoning.
+%
+% \ych{"annealed sampling" perhaps would trigger some doubts from stats.}
+% \ych{TODO: explain performance gain more clearly.}
+\end{abstract}
+
+\section{Introduction}
+Reinforcement learning with verifiable rewards (RLVR) is unlocking new frontiers in mathematical reasoning and code generation for LLMs~\citep{openai2024learning, guo2025deepseek, team2025kimi}. 
+%
+In this framework, LLMs iteratively generate a diverse set of potential solutions (rollouts) for a given prompt, learning to improve their reasoning by receiving feedback on these self-generated attempts.
+%
+This dynamic of self-generation and refinement is fundamentally a process of learning from experience~\citep{silver2025welcome}, compelling the model to confront the classic -- and notoriously difficult -- RL trade-off between discovering novel strategies (i.e., \textit{Exploration}) and perfecting known successful ones (i.e., \textit{Exploitation})~\citep{thrun1992efficient, sutton1998reinforcement}.
+
+% Previous works have proposed various methods to address this issue~\citep{hou2025t1, cheng2025reasoning, wang2025beyond, cui2025entropy, chen2025pass, deng2025trial}, including upsampling and filtering rollouts~\citep{hou2025t1, yu2025dapo}, incorporating entropy in optimization~\citep{agarwal2025unreasonable, cheng2025reasoning} and replacing pass@1 reward with pass@k reward~\citep{chen2025pass}. More recently, a focus has been shifted to a fine-grained control over token-level optimization under per-token entropy dynamic~\citep{wang2025beyond, cui2025entropy}. In particular, \citet{wang2025beyond} finds high-entropy tokens works as ``forking tokens'' and concentrate optimization on such tokens would yield significant performance gain.\footnote{Such findings has been further reinforced and utilized to improve test-time performance~\citep{fu2025deep}.} \citet{cui2025entropy} points out the brittleness of directly controlling token-level entropy. Instead, they analyze the entropy dynamics and find that the entropy changes could be approximated by probability-advantage covariance, and propose to clip high-covariance tokens in optimization. While effective, these previous methods typically require either offline sampling to estimate relevant statistics (e.g., entropy percentile) or complicated covariance statistics computation and collection on the fly, incurring significant computation overhead or additional stages in RL training. 
+
+Previous work has sought to manage this trade-off with various techniques, such as upsampling rollouts~\citep{hou2025t1}, filtering out uninformative prompts~\citep{yu2025dapo}, incorporating entropy regularization in the optimization objective~\citep{agarwal2025unreasonable, cheng2025reasoning}, using tree-search in rollout sampling~\citep{li2025treepo}, and replacing pass@1 with pass@k rewards~\citep{chen2025pass}.
+%
+Building on these ideas, recent efforts have shifted towards more fine-grained, token-level control of the exploration process~\citep{wang2025beyond, cui2025entropy}.
+%
+For instance, \citet{wang2025beyond} identify high-entropy tokens as ``forking points'' and show that concentrating optimization on them yields significant gains.\footnote{This finding has been reinforced and leveraged to improve test-time performance~\citep{fu2025deep}.}
+%
+Recognizing the brittleness of direct entropy control, \citet{cui2025entropy} instead proposes clipping tokens with high probability-advantage covariance, an approximation for future entropy change, during optimization.
+%
+While effective, these token-level methods often introduce considerable complexity, requiring either offline sampling to estimate statistics or on-the-fly computation of complex covariance metrics, thereby incurring significant overhead.
+%
+
+
+% We argue that such complicated fine-grained control is not necessary by taking into account of \textit{LLM probability concentration}: LLM output distribution for given prompt would naturally concentrate on fewer and fewer tokens as generation progresses, leading to a sharper, low-entropy distribution~\citep{yang2025alignment}. Branching out at a later position could risk introducing very low-probability low-quality samples and hurt the performance~\citep{liao2025lost, yang2025alignment, fu2025deep}. Though these findings are established in inference-time policy evaluation, we hypothesize that this also holds for RL training, considering that the strong connection for Base Models and models after RLVR tuning~\citep{yue2025does, zhao2025echo}, and propose a much simpler yet effective RLVR exploration strategy: \textit{Explore at the beginning, but exploit at the end}. 
+
+In this work, we propose an alternative perspective, suggesting that such intricate control mechanisms may be unnecessarily complicated.
+%
+Our approach is motivated by \textit{LLM probability concentration} phenomenon, where the next-token distribution naturally sharpens onto a few candidates as generation progresses~\citep{yang2025alignment}.
+%
+This implies that forcing exploration late in the sequence not only conflicts with the model's natural dynamics, but also risks injecting low-probability, low-quality rollouts that degrade performance~\citep{liao2025lost, yang2025alignment, fu2025deep}.
+% Consequently, forcing exploration late in the generation process risks introducing low-probability low-quality rollouts and degrading performance~\citep{liao2025lost, yang2025alignment, fu2025deep}. 
+% \ych{improve the transition}
+Although these observations stem from inference-time analysis, the well-documented continuity between base and RL-tuned models~\citep{yue2025does, zhao2025echo} suggests that the same principle governs the dynamics of RLVR training as well.
+%
+Taken together, these insights motivate a much simpler yet effective strategy: \textit{explore at the beginning, exploit at the end}.
+%
+% This leads us to a much simpler, yet effective, exploration strategy: \textit{Explore at the beginning, but exploit at the end}.
+
+
+% Inspired by the idea of simulated annealing~\citep{kirkpatrick1983optimization, bertsimas1993simulated}, we implement this strategy by \textbf{Annealed Sampling}: rollout sampling starts with a high-temperature at the beginning, but gradually ``cooling down'' towards the end. While surpassing normal multinomial sampling at the beginning, this approach essentially make the current RLVR algorithm off-policy and could make optimization unstable in the middle. We further adapt truncated importance sampling~\citep{heckman1998matching} and behavior policy search~\citep{hanna2017data} to mitigate this issue and finally our proposed method yields significant performance improvement , does not introduce significant computational overhead, and stay compatible with most existing RLVR algorithms as we do not change the optimization objective or data filtering process. 
+To realize this strategy, we introduce \textbf{\algname} (EAD), a method inspired by the principles of simulated annealing~\citep{kirkpatrick1983optimization, bertsimas1993simulated}.
+This technique begins rollout sampling with a high temperature to encourage diversity and gradually ``cools down'' to a low temperature to favor high-probability tokens.
+However, this temperature schedule renders the learning process off-policy, which can lead to optimization instability.
+We mitigate this issue by adapting truncated importance sampling~\citep{heckman1998matching} and behavior policy search~\citep{hanna2017data}.
+The resulting method yields significant performance improvements without introducing substantial computational overhead or altering the core optimization objective and data processing pipeline, ensuring broad compatibility with existing RLVR algorithms.
+
+% Empirical experiments demonstrate that our proposed method stays superior compared to normal multinomial sampling during the training process, mitigate entropy collapse problems, incentivize the model to use longer reasoning chains to solve complex problems, and can scale well to larger model training. Also, when tuned carefully, our \textbf{Annealed Sampling} method can also improve test-time performance. 
+In summary, our contributions are as follows:
+\begin{enumerate}[wide, labelwidth=!, labelindent=0pt]
+    \item[\circone] We propose \textbf{\algname}, a simple and computationally efficient exploration strategy for RLVR that outperforms standard temperature sampling and mitigates entropy collapse.
+    \item[\circtwo] We show that our method incentivizes the model to generate longer, more complex reasoning chains to solve difficult problems and scales effectively to larger models.
+    \item[\circthree] We demonstrate that, with careful tuning, Annealed Sampling can also be applied at test-time to further boost performance.
+\end{enumerate}
+
+
+
+\section{Preliminary}
+\paragraph{Notations.} In this paper, $\pi_\theta$ refers to the distribution of a language model parameterized by $\theta$. $\pi_{\mathrm{ref}}$ is the reference model, which is usually the starting point of reinforcement fine tuning. A prompt is written as $x$ and a response as $y$. $R(x, y) \in \mathcal{R}$ refers to a reward model evaluating prompt–response pairs. 
+$y_t$ and $y_{<t}$ are the $t$-th token of the response $y$ and all tokens before it, respectively. Given a prompt $x$, the conditional distribution is $\pi_\theta(\cdot \mid x)$, and $\pi_\theta(y \mid x)$ is the probability of a specific response $y$. We use $\mathcal{D}$ to represent a set of prompts. $|\cdot|$ represents the length of a response or the cardinality of a set. The notation $1:n$ stands for the set $\{1, \dots, n\}$.
+
+\paragraph{Reinforcement Learning with Verifiable Reward (RLVR).}
+Reinforcement learning for fine-tuning language models typically optimizes the expected reward
+\begin{equation}
+\label{eq:rl-main-objective}
+    \max_\theta \mathit{J}(\theta) := \E_{x \sim \mathcal{D}, y \sim \pi_\theta(\cdot\mid x)}\left[ R(x, y) \right].
+\end{equation}
+In reasoning tasks, conventional reward models often suffer from \emph{reward hacking}, failing to reliably separate correct from incorrect responses. \citet{guo2025deepseek} address this by using verifiers as rewards, which directly check correctness and provide binary feedback, ensuring the RL process is guided by accurate signals.
+
+RLVR algorithms commonly build on policy gradient (PG) \citep{williams1992simple}. To improve robustness, \citet{schulman2015trust,schulman2017proximal} introduce the trust region constraints and propose a surrogate loss whose gradients match PG estimates. The widely adopted PPO-clipping algorithm optimizes
+\begin{equation*}
+J_{\text{PPO}}(\theta) =
+\E_{x \sim \mathcal{D},y \sim \pi_{\theta_{\text{old}}}(\cdot\mid x)}
+\left[\frac{1}{|y|}
+\sum_{t=0}^{|y|}\min\left\{r_t(\theta)A_t,\mathrm{clip}\left(r_t(\theta),1-\varepsilon,1+\varepsilon\right)A_t\right\}
+\right],
+\end{equation*}
+where $r_t(\theta)=\tfrac{\pi_{\theta}(y_t \mid y_{<t})}{\pi_{\theta_{\text{old}}}(y_t \mid y_{<t})}$ and $A_t$ is the advantage derived from $R(x,y)$ and KL divergence from the reference model to reduce variance of gradient estimation. 
+To avoid computing token-level advantages and maintaining an extra value model, 
+subsequent works~\citep{shao2024deepseekmath,yu2025dapo} simplify the advantage computation. 
+% and optimize a modified objective, known as GRPO:
+% \begin{align*}
+% J_{\text{GRPO}}(\theta) =&
+% \E_{x \sim \mathcal{D},y^{(1:G)} \overset{iid}{\sim} \pi_{\theta_{\text{old}}}(\cdot\mid x)}
+% \left[\frac{1}{G}\sum_{i=1}^G\frac{1}{|y^{(i)}|}\sum_{i=1}^{|y^{(i)}|}\min\left\{r^{(i)}_{\theta,t}A_i,\mathrm{clip}\left(r^{(i)}_{\theta,t},1-\varepsilon,1+\varepsilon\right)A_i\right\}
+% \right]\\
+% &\quad-\beta\E_{x\sim D}\left[\mathbb{D}_{\mathrm{KL}}\left(\pi_\theta(\cdot\mid x)\|\pi_{\mathrm{ref}}(\cdot\mid x)\right)\right]
+% \end{align*}
+% where $r^{(i)}_{\theta,t}=\frac{\pi_{\theta}(y^{(i)}_{t} \mid y^{(i)}_{<t})}{\pi_{\theta_{\text{old}}}(y^{(i)}_{t} \mid y^{(i)}_{<t})}$ and the advantage is shared across tokens within one response and computed as
+% \[
+% A_i=\frac{R_i-\mathrm{mean}_{k\in[G]}(R_k)}{\mathrm{std}_{k\in[G]}(R_k)},~
+% \mathrm{with}~R_i=R(x,y^{(i)}).
+% \]
+% \citet{yu2025dapo} adopt a different way to estimate the token mean, further remove the KL constraint, and utilize additional tricks that end with the following training objective:
+Among those, one effective method is DAPO~\citep{yu2025dapo} optimizing the following objective:
+\begin{align*}
+J_{\text{DAPO}}(\theta) 
+&=\E_{x \sim \mathcal{D},y^{(1:G)} \overset{iid}{\sim} \pi_{\theta_{\text{old}}}(\cdot\mid x)}
+\left[\frac{1}{\sum_{i=1}^G |y^{(i)}|}\sum_{i=1}^G\sum_{i=1}^{|y^{(i)}|}\min\left\{r^{(i)}_{\theta,t}A_i,\mathrm{clip}\left(r^{(i)}_{\theta,t},1-\varepsilon,1+\varepsilon\right)A_i\right\}
+\right]\\
+&\mathrm{s.t.}\quad0<\left|\{y^{(i)}:y^{(i)}\mathrm{~is~correct}\}\right|<G,
+\end{align*}
+% where $r_{\theta,t}^{(i)}$ and $A_i$ are the same as those of GRPO.
+where $r^{(i)}_{\theta,t}=\frac{\pi_{\theta}(y^{(i)}_{t} \mid y^{(i)}_{<t})}{\pi_{\theta_{\text{old}}}(y^{(i)}_{t} \mid y^{(i)}_{<t})}$ and the advantage is shared across tokens within one response and computed as
+\[
+A_i=\frac{R_i-\mathrm{mean}_{k\in 1:G}(R_k)}{\mathrm{std}_{k\in 1:G}(R_k)},~
+\mathrm{with}~R_i=R(x,y^{(i)}).
+\]
+
+%%% original starts here%%%
+% For a fixed prompt $\inputval$, let $\pi_\theta(\outputval \mid \inputval)$ denote the output distribution for the policy model and $R(x, y) \in \{0, 1\}$ be the verifiable binary reward functions for input $\inputval$ and output sample $\outputval$. Various RL algorithms such as PPO~\citep{schulman2017proximal} and GRPO~\citep{shao2024deepseekmath} are optimizing different variants of the following objective:
+% \begin{equation}
+%     \max_\theta \mathit{J}(\theta) \defeq \E_{\inputval \sim \mathit{D}, \outputval \sim \pi_\theta(\outputval | \inputval)}\left[ R(x, y) \right]
+% \end{equation}
+% \ych{Lin and Chenxiao: Can you complete this part? I am relatively unfamiliar with writing this part. But basic idea is to establish some notations and terminologies (e.g., PPO/GRPO formulation, advantage, clipping, KL-regularization, etc.) that we can use later. }
+%%% original ends here%%%
+
+\paragraph{Temperature Sampling.}
+Given a prefix $l$, the language model predicts the next token applying a softmax function. Temperature sampling \citep{ACKLEY1985147} introduces a temperature parameter $\tau$ to modify the softmax:
+\[
+\pi_\theta(o_k\mid l;~\tau) = \frac{e^{h_k/\tau}}{\sum_{i}e^{h_i/\tau}},
+\]
+where $o_k$ is the $k$-th vocabulary token and $h_k$ is its logit determined by $l$ and $o_k$. A higher temperature increases output diversity by allowing the model to consider less probable tokens. In the context of on-policy reinforcement learning, this encourages the model to explore a wider range of outputs.
+
+\paragraph{Pass@$\bm k$.} Pass@$k$ measures the probability that at least one of $k$ independent outputs from a language model is correct. Let $p_x$ denote the underlying accuracy of the language model $\pi$ given one prompt $x$. The pass@$k$ accuracy is defined as
+\[
+\E_{x\sim\mathcal{D}}\left[1-(1-p_x)^k\right].
+\]
+The inner term $1-(1-p_x)^k$ quickly approaches one unless $p_x$ is near zero. For example, when $k=64$, any $p_x \geq 0.0695$ already yields a probability of at least $0.99$. A large gap between pass@1 and pass@$k$ suggests that for some prompts, $p_x$ is essentially zero. 
+High diversity may benefit this metric because a model with diverse outputs is more likely to maintain non-negligible $p_x$ values across prompts, leading to stronger pass@$k$ performance.
+
+\paragraph{Entropy.} Given a prefix $l$, the \emph{token-level entropy} is 
+\[
+H(\pi_\theta(\cdot\mid l))=-\sum_{j}\pi_\theta(o_j\mid l)\log\pi_\theta(o_j\mid l),
+\]
+where $o_j$ is the $j$-th vocabulary token. The \emph{average token-level entropy of the model} is 
+\[
+H(\pi_\theta) 
+= -\E_{\substack{x\sim D,\\y\sim\pi_\theta(\cdot\mid x)}}\left[\log\pi_\theta(y_t\mid x,y_{<t})\right]
+\approx \frac{1}{|\mathcal{D}|}\sum_{x\in\mathcal{D}}\frac{1}{\sum_{i=1}^G|y^{(i)}|}\sum_{i=1}^G\sum_{t=1}^{|y^{(i)}|}H(\pi_\theta(\cdot\mid [x;y^{(i)}_t])),
+\]
+where $y_1,\dots,y_G$ are iid samples from $\pi_\theta(\cdot\mid x)$.
+% \lin{Do we still need this?}
+
+% \section{Exploring Early and Exploiting Late}
+% \label{sec:exploitation-vs-exploration}
+% \ych{Victor: "exploration at the beginning, exploit at the end" seems pretty straightforward. We do not need these two experiments or neglect other prior works to motivate this -- we can keep it as the hypothesis, and use experiments to verify this. The story would tell itself. 
+% So perhaps we can go this: "we need to do exploration, you can take whatever complicated heuristics, but a simple one is using temperature -- but using the same high/low temperature across positions might bring some negative effects (say sth about this). }
+
+% \ych{off-policy provides better quality, but you also need to take care the optimization problem. off-policy for exploration, on-policy for optimization, variation comes from beginning (where off-policy) ("exploit" $\rightarrow$ "on-policy") }
+
+% \ych{why it is working? $\rightarrow$ intrinsically independent important? Introduce }
+
+% \ych{we are doing RLVR $\rightarrow$ in this context, it is important to get good examples $\rightarrow$ need to increase variance $\rightarrow$ easiest way to adjust temperature $\rightarrow$ sacrifice quality $\rightarrow$ annealing to 1.0 $\rightarrow$ another good thing is we can stay on-policy later, stabilizing optimization (off-policy $\rightarrow$ on-policy ) (on-policy works better) }
+
+%%% v1 starts here%%%
+% Recent works~\citep{agarwal2025unreasonable,cui2025entropy, wang2025beyond, wu2025invisible} have identified the importance and values of understanding entropy mechanisms in RLVR. Specifically, they find that with the training going on, the entropy for the policy model $\pi_\theta$ will gradually exhaust (i.e., ``entropy collapse''), reducing the exploration space and leading to plateaued performance. Therefore, various entropy controls have been proposed, with most of them operating on the token level. For example, \citet{cui2025entropy} proposes to clip high-covariance (covariance between token-likelihood $\pi_\theta(\outputval | \inputval, \outputval_{1:j-1})$ and advantages $A(\outputval_j)$) tokens, and \citet{wang2025beyond} discards low-entropy tokens in their token-level loss. These methods typically require significant additional computation (e.g., covariance estimation, quantile computation) and hand-wavy thresholding tuning. Also, as we will explain in the next section, actually there exists some structured patterns for the global sequence entropy $H_\theta(\outputVar | x)=\sum_{y} \pi_\theta(\outputval | \inputval) \log \pi_\theta(\outputval | \inputval)$ that we can utilize to simplify the entropy control. 
+% \ych{This is the high-level idea for this subsection. We do need to expand a bit. For example we should explain how people exactly do the entropy control. }
+
+% \begin{theorem}[AEP for LLMs] Given $0 < \epsilon < 1$, we have:
+% \label{thm: aep_llm}
+%     \begin{equation}
+%     \lim_{N \rightarrow \infty}{P\left( \left\lvert -\frac{1}{N}\log \tilde{P}\left(\outputval_{1:N} | \inputval; \theta \right) - {\bar{H}\left(\outputVar_{1:N} | \inputval; \theta \right)}\right\rvert < \epsilon \right) } = 1
+%     \end{equation}
+% \end{theorem}
+
+% \ych{Perhaps we may also want to discuss the connection of these two papers -- following AEP theory~\citep{mudireddy2024slaves}, when generations are long enough, length-averaged negative log-lik estimates length-averaged global entropy, and thus retaining low-loglik tokens is (asymptotically) equivalent to keeping high-entropy tokens. }
+%%% v1 ends here %%%
+
+%%% v2 starts here%%%
+% \ych{The first two paragraphs currently read a bit like related works -- not that clear what is the purpose and main message beyond introduction + related works. I am thinking about, perhaps we can start with giving a ``global-view'' of entropy-based RL exploration works (e.g., from $H(y_t | x, y_{1...t-1})$ to $H(y_t | x, Y_{1...t-1}) = \sum_{y_{1..t-1}} P(y_{1..t-1} | x) H(y_t | x, y_{1...t-1})=\E_{y_{1..t-1}}H(y_t | x, y_{1...t-1})$, say we are trying to find a position-wise correlation that allows us to do online decision (which could only incur minimal computation overhead, better than post-hoc reweighting or filtering, we should also prepare a table summarizing our most relevant work in post-hoc category). }
+
+% % First, highlight the main goal of our paper is to realize better tradeoff between immediate peformance improvement and exploration. 
+% % 1. The mode collapse problem of existing methods
+% It is widely recognized that current RLVR pipelines do not necessarily enhance the reasoning ability of LLMs. In particular, existing RLVR algorithms often fail to expand the reasoning path boundary of the base model \citep{wu2025invisible}, a phenomenon commonly referred to as mode collapse \citep{todo}. This likely arises because current RL methods tend to steer the model $\pi_\theta$ toward a narrow set of correct responses, thereby sacrificing coverage of other valid solutions. Moreover, uniform improvement is not achieved across prompts. This is reflected in the paradoxical pattern of increased pass@1 accuracy but decreased pass@$k$ accuracy in the model after RL training \citep{yue2025does}. 
+% A likely contributing factor is that traditional sampling strategies with limited inference budgets might highly restrict exploration during RL training.
+
+% % 2. What's exploration and exploitation? why are they important? why is there a conflict? 
+% This raises a perennial question in RL training: \emph{how to optimally balance exploitation and exploration?} 
+% In the context of LLM, \emph{exploitation} targets immediate returns, such as increasing pass@1 accuracy. It can be encouraged by strategies that concentrate probability mass on high-reward responses of the current model, such as lowering the sampling temperature or applying greedy decoding.
+% \lin{Add more?}
+% \emph{Exploration} by contrast, aims at long-term improvement. It seeks to broaden the range of visited responses to uncover alternative reasoning paths or correct outputs that the model has not yet mastered. This can be achieved by increasing the sampling temperature or encouraging entropy increase during training\citep{agarwal2025unreasonable,cui2025entropy,wang2025beyond,zheng2025first}. The tension between the two is evident: excessive exploitation may rapidly boost pass@1 accuracy but risks mode collapse, while excessive exploration can preserve or enhance diversity but may waste limited inference budget on low-quality or unpromising responses. Striking the right balance between these two is critical for RLVR, as it determines whether training ultimately converges to a policy that is both high-performing and diverse.
+
+% 3. Important observation.
+% A large language model fundamentally defines a distribution over a high-dimensional space. A clearer understanding of its overall ``shape'' is crucial for designing more efficient sampling strategies. For example, by accounting for variations in concentration and spread across different dimensions, practitioners can more effectively allocate sampling effort. \ych{I still feel the "dimension" quite abstract and hard to understand.... also not that clear how this relates/motivate positional-statistics. }
+
+% Recent studies highlight that the initial segments of generated responses largely determine their overall quality \citep{yang2025alignment,liao2025lost}. 
+% For instance, if we branching out the generation in the middle of generation, the performance would would significantly get impacted (See \cref{fig: forking}).
+% To further confirm this, we compute the mean sequence entropy (conditioned on prompts) of Llama-3-8b-Instruct~\citep{dubey2024llama} on the MMLU dataset~\citep{hendrycks2021measuring}. As illustrated in \cref{fig:entropy_dynamics}, the per-step entropy would gradually reduce with more tokens generated in most cases. This indicates that the early portion of a generation exerts disproportionally significant influences on model's outputs. 
+
+% \begin{figure*}[t]
+% \centering
+% \begin{subfigure}[t]{0.45\textwidth}
+%     \centering
+%     \includegraphics[width=\linewidth]{iclr2026/figures/branching_factor_figure/piecewise_ebf_Llama-3-8B-Instruct_mean_seq_entropy_fixed_start.pdf}
+%     \caption{Entropy Dynamics for Llama-3-8B-Instruct on MMLU dataset}
+%     \label{fig:entropy_dynamics}
+% \end{subfigure}
+% \begin{subfigure}[t]{0.45\textwidth}
+%     \centering
+%     \includegraphics[width=\linewidth]{iclr2026/figures/branching_factor_figure/bon_from_middle_demo.pdf}
+%     \caption{Branching Out in the middle of generation significantly harms the model performance. }
+%     \label{fig: forking}
+% \end{subfigure}
+% \end{figure*}
+
+% \citet{yang2025alignment} conducts a systematic investigation on the sequence entropy $H_\theta(\outputVar | x)$, utilizing Asymptotic Equipartition Property theory~\citep{mudireddy2024slaves} as a powerful entropy estimator. We follow the same approach to reproduce the entropy-per-token figure given prompt $x$ and base model $\theta$ here on the MMLU dataset~\citep{hendrycks2021measuring} in \cref{fig:entropy_dynamics}. As we can observe, in most cases, the per-step entropy would gradually reduce with more tokens generated, so the entropy-based token clipping, as mentioned in the previous part, in most cases, is only encouraging exploration at the beginning. This echoes with the recent works demonstrating that the beginning part of the generation asserts disproportionally significant influences for reasoning models~\citep{liao2025lost}. To see this more clearly, we also demonstrate in \cref{fig: forking} that, if we branch out in the middle of generation as in \citep{yang2025alignment}, the performance would significantly get impacted. 
+
+
+% 4. Point out our core idea: exploring at the right place is important. Diversity of responses are guaranteed while performance improvement is not sacrificed; we don't waste inference budget on those low-quality responses.
+% All of the above points to a central conclusion: exploring in the right places enables the efficient discovery of diverse, high-quality responses. Since no inference budget should be wasted on low-quality or insufficiently diverse responses during RL training, this insight naturally motivates a simple yet compelling sampling strategy: \emph{Explore at the beginning, but exploit at the end.}
+% \section{From Global Entropy Dynamics to a Positional Heuristic}
+% \label{sec:exploitation-vs-exploration}
+
+% A unified view of exploration in language models is to treat it as a problem of managing distributional uncertainty. An ideal strategy would focus sampling on steps $t$ with high average uncertainty, which can be formally expressed by the expected conditional entropy, $\mathbb{E}_{y_{<t} \sim \pi_\theta(\cdot|x)}[H(y_t | x, y_{<t})]$. This global perspective accounts for all possible generation paths. However, computing this expectation is intractable, as it requires marginalizing over a combinatorially large space of prefixes $y_{<t}$.
+
+% Combining all these works together, we can come up with a simple strategy that helps the model to explore a high-quality outputs subspace: \textit{Explore at the beginning, but exploit at the end. } In the next section, inspired by the simulated annealing technique~\citep{kirkpatrick1983optimization}, we will show that this could be achieved via adaptive temperature scaling.  
+%%% v2 ends here%%%
+
+%%% v3 starts here%%%
+% \ych{Current Framing Problem: 1) Still hard to argue why we want to look at global entropy instead of local next-token prediction distribution entropy; 2) It might not be a good way to say prior methods are all "not good" -- we did not compare to any of them. }
+
+% An effective exploration strategy should allocate its sampling budget to regions of high uncertainty, where diverse and potentially high-reward solutions are most likely to be found. In the context of autoregressive generation, this means exploring more at steps $t$ where the conditional distribution $\pi_\theta(y_t | x, y_{<t})$ is closer to uniform, when the partial reward is not available or hard to define. Ideally, we should compute the expected entropy for each token position, $\mathbb{E}_{y_{<t} \sim \pi_\theta(\cdot|x)}[H(y_t | x, y_{<t})]$, allowing us to dynamically allocate exploration effort on the fly. However, calculating this expectation is computationally intractable as it requires marginalizing over all possible prefixes $y_{<t}$, a combinatorially explosive set.
+
+
+% Given the impracticality of exact calculation, prior work has developed complex proxies to identify high-uncertainty ``forking points'' for exploration, often requiring post-hoc analysis or significant on-the-fly computational overhead (see \cref{tab:related_work_comparison}). We argue, however, that a much simpler and more efficient proxy exists: \textbf{the token's position}.
+
+% Empirical evidence suggests a strong correlation between a token's position and its conditional entropy. As illustrated in \cref{fig:entropy_dynamics}, we observe that the average per-step entropy of Llama-3-8B on the MMLU dataset consistently decreases as generation progresses. This phenomenon, where the model's predictive distribution sharpens over time, aligns with recent findings that the initial segments of a generation have a disproportionate influence on its final quality \citep{yang2025alignment,liao2025lost}. Once an initial reasoning path is established, the subsequent steps become more constrained and deterministic.
+
+% This positional trend provides the foundation for a simple, yet powerful, online sampling strategy: \textbf{Explore at the beginning, but exploit at the end.} By front-loading exploration in the high-entropy initial phase of generation and transitioning to exploitation as the model gains confidence, we can efficiently discover diverse, high-quality responses without the computational burden of complex, token-level control mechanisms. This principle directly motivates our proposed method, Annealed Sampling, which operationalizes this strategy through a simple temperature schedule.
+% \begin{table}[ht!]
+% \centering
+% \caption{A unified view of exploration strategies in RLVR. Our positional approach provides an efficient on-the-fly solution, avoiding the overhead of post-hoc or complex token-level methods.}
+% \label{tab:related_work_comparison}
+% \resizebox{\textwidth}{!}{%
+% \begin{tabular}{@{}llll@{}}
+% \toprule
+% \textbf{Category} & \textbf{Method} & \textbf{Strategy} & \textbf{Computational Overhead} \\ \midrule
+% \multirow{2}{*}{Data Filtering/Upsampling} & T1-Tuning \citep{hou2025t1} & Upsample high-reward rollouts from a buffer & Requires storing and re-sampling from rollouts \\
+%  & DAPO \citep{yu2025dapo} & Filter uninformative prompts after generation & Requires excessive evaluation-resampling switching \\ \midrule
+% \multirow{2}{*}{Token Reweighting/Clipping} & EntropyQuantile~\citep{wang2025beyond} & Concentrate optimization on high-entropy tokens & Requires offline sampling to estimate statistics \\
+%  & EntropyMech~\citep{cui2025entropy} & Clip updates based on prob-advantage covariance & Requires significant on-the-fly co-variance computation \\ \midrule
+% \textbf{Online (Positional Heuristic)} & \textbf{Annealed Sampling (Ours)} & \textbf{Vary temperature based on token position} & \textbf{Negligible (a simple calculation per token)} \\ \bottomrule
+% \end{tabular}%
+% }
+% \end{table}
+
+% Existing methods attempt to approximate this ideal by identifying high-uncertainty ``forking points'' on the fly, but often introduce significant computational overhead or require post-hoc analysis (see \cref{tab:related_work_comparison}). We argue for a simpler approach, positing that a robust and computationally trivial proxy for this complex entropy dynamic already exists: \textbf{the token's position}.
+
+% Empirical analysis reveals a strong, consistent trend: the model's average uncertainty naturally decays as generation progresses. As shown in \cref{fig:entropy_dynamics}, the per-step entropy of Llama-3-8B-Instruct on MMLU systematically decreases with the generation step $t$. This aligns with findings that initial tokens disproportionately influence output quality \citep{yang2025alignment,liao2025lost}; once a reasoning path is chosen, subsequent choices become more constrained. This positional decay in entropy serves as a powerful heuristic, allowing us to approximate the global entropy landscape without any complex calculations.
+
+% This insight directly motivates an efficient, on-the-fly sampling strategy: \textbf{Explore at the beginning, but exploit at the end}. By aligning our sampling pressure with the model's natural entropy dynamics---front-loading exploration in the uncertain initial phase and shifting to exploitation as the distribution sharpens---we can effectively discover diverse, high-quality solutions. This principle forms the foundation of our method, which implements this positional heuristic via a simple, annealed temperature schedule.
+%%% v3 ends here%%%
+
+
+%%% v4 starts here%%%
+% \ych{We shall starts with the background of ``Exploration'' in general (Deep)RL to say, in a high-dimensional space, area with high uncertainty (often quantified by entropy) has been widely used as an indicator for high-priority target to explore. (with some citations) Specifically, in RLVR domain, ..... }
+
+% Exploration plays a pivotal role in reinforcement learning to search solutions and avoid committing early to local optima~\citep{sutton1998reinforcement, ladosz2022exploration}. A common challenge to designing effective exploration strategies for deep RL is the vast action space and the sparsity of rewards. Among various exploration strategies, entropy has been widely-recognized as effective indicator for informative areas to sample from~\citep{ziebart2008maximum, schulman2017equivalence, haarnoja2018soft}. Following these traditional insights, in RLVR domain, entropy collapse phenomenon has been observed and viewed as alarms of  insufficient exploration~\citep{yu2025dapo, wang2025beyond, cui2025entropy}. To address this, various heuristics have been proposed, including token-reweighting or masking based on entropy or entropy reduction~\citep{wang2025beyond, cui2025entropy}, adjusting clipping threshold to encourage sampling from low-probability tokens~\citep{yu2025dapo}, and adding an entropy regularizer~\citep{cheng2025reasoning, hou2025t1}. 
+% Just as people deepen their understanding by venturing beyond familiar subjects, language models likewise benefit from ``seeing more'' to develop a well-rounded knowledge base. 
+% A variety of heuristics can foster such exploration, including token reweighting~\citep{cui2025entropy,wang2025beyond} and data-filtering~\citep{yu2025dapo,hou2025t1} strategies. 
+
+% Among these, \emph{temperature sampling} stands out as the most direct and widely used: By raising or lowering the sampling temperature, one can immediately control the randomness of generated tokens. However, applying a fixed temperature across all positions can create undesirable side effects: A high temperature promotes diversity but risks introducing nonsensical outputs and hallucination in mid of generation and hurt the performance~\citep{renze-2024-effect, wang2025beyond}, while a low temperature limits the exploration of novel valid solutions and could risk introducing repetitive outputs towards the end~\citep{Holtzman2020The, guo2025deepseek}. 
+% introducing unwarranted uncertainty and degrading coherence in the latter part of a response.
+% Conversely, a low temperature favors response quality yet limits the discoery of novel valid solutions.
+% \ych{We should cite some work and expand more discussions to say it more clearly what could be potential harm. }
+
+% \ych{Before saying that, we should do some simple formulation derivation to show the audience that, from the perspective of global entropy distribution, high-entropy places are \emph{easier} to be found at beginning and harder to be found at the end. (we might also have to say that in autoregressive LLM, each token generation is often used as an analogy as "action" in traditional RL literature). It is possible that we could find some high-entropy positions at a later position for \emph{specific} rollout (as Victor commented), but overall this probability is exponentially small and in the end not worth keep monitoring. } 
+% \ych{need some transition for this detour paragraph} The autoregressive nature of language models naturally suggests that high entropy tokens are easier to be found at earlier positions than later,\footnote{It is possible that some high-entropy positions would occur at a later position for \emph{specific} rollouts, but overall this probability is exponentially small with position T\citep{yang2025alignment} and not worth monitoring. } following data processing inequality: $H(Y_t | [X, Y_{<t}]) \geq H(Y_{t+1} | [X, Y_{<t+1}])$, where $H(Y_t | [X, Y_{<t}]) = \E_{y_{<t}} H(Y_t | [X, y_{<t}])$ is the expected entropy at position $t$. Following the principle that we should explore at high-entropy area, a natural remedy arises for temperature sampling for effective and efficient exploration and exploitation: 
+% Taking the common analogy of treating each token generation as an action in traditional RL\ych{do we need citation here?}, 
+% \textbf{Explore at the beginning, but exploit at the end}. 
+% Within a single generation, starting with a higher temperature to broaden the search space and gradually lowering it to sharpen focus achieves a principled balance between exploratory diversity and final-response quality. 
+% Concretely, we implement this positional heuristic through a simple annealed temperature schedule that begins with a higher-than-usual temperature ($\tau > 1$). By integrating this decoding strategy into RLVR, we enable effective exploration and exploitation during fine-tuning.
+
+% \ych{We could use some experiments to further verifies some conclusions, like entropy decreasing}
+%%% v4 ends here%%%
+%%% v5 starts here%%%
+\section{Sequential Exploration: Explore Early, Exploit Late}
+\label{sec:exploitation-vs-exploration}
+Exploration is a cornerstone of reinforcement learning (RL), enabling agents to discover effective policies and avoid converging to suboptimal solutions~\citep{sutton1998reinforcement, ladosz2022exploration}. This principle is especially critical in deep RL, where vast action spaces make exhaustive search intractable. In the context of RL for language models (RLVR), insufficient exploration often manifests as ``entropy collapse''—a premature narrowing of the generation distribution~\citep{yu2025dapo, wang2025beyond, cui2025entropy}. A common simple tool to encourage exploration is temperature sampling, yet a \textit{fixed} temperature imposes a difficult trade-off. A high temperature promotes diversity but risks introducing nonsensical outputs and hallucination in mid of generation and hurt the performance~\citep{renze-2024-effect, wang2025beyond}, while a low temperature limits the discovery of novel solutions, risking generic or repetitive outputs~\citep{Holtzman2020The, guo2025deepseek}.
+
+The key to resolving this dilemma lies not in finding a single best temperature, but in recognizing that the need for exploration changes throughout the generation process. 
+% This insight stems directly from the \textbf{autoregressive nature of language models}. At the beginning of a sequence, the context is minimal, uncertainty is high, and a vast space of valid continuations exists. As the model generates more tokens, the context becomes increasingly specific, constraining future choices. This natural decay in uncertainty is formalized by the data processing inequality, which shows that expected conditional entropy tends to decrease with each step: $H(Y_t | [X, Y_{<t}]) \geq H(Y_{t+1} | [X, Y_{<t+1}])$.\footnote{While specific rollouts may have late high-entropy positions, the probability of this is exponentially small with position $t$~\citep{yang2025alignment}, making the overall trend a reliable heuristic.}
+% 
+This key insight stems directly from the \textbf{autoregressive nature of language models}. At the beginning of a sequence, the context is minimal, uncertainty is high, and a vast space of valid continuations exists. As the model generates more tokens, the context becomes increasingly specific, constraining future choices. This natural uncertainty reduction is formalized by the data processing inequality, which shows that expected conditional entropy tends to decrease with each step:\footnote{While specific rollouts may have late high-entropy positions, the probability of this is exponentially small with position $t$~\citep{yang2025alignment}, making the overall trend a reliable heuristic.} 
+\begin{equation}
+\label{eq:entropy_decay}
+H(Y_t | [x, Y_{<t}]) = \underbrace{\mathbb{E}_{y_{<t}}\big[ H(Y_t | [x, y_{<t}]) \big]}_{\substack{\text{Expected entropy at step } t \\ \text{(average over all prefixes } y_{<t}\text{)}}}
+\geq 
+\underbrace{\mathbb{E}_{y_{<t+1}}\big[ H(Y_{t+1} | [x, y_{<t+1}]) \big]}_{\substack{\text{Expected entropy at step } t+1 \\ \text{(average over all prefixes } y_{<t+1}\text{)}}} = H(Y_{t+1} | [x, Y_{<t+1}])\nonumber
+\end{equation}
+% \footnote{The conditional entropy at step $t$ is an expectation over the distribution of all possible prefixes generated up to that point: $H(Y_t | [X, Y_{<t}]) = \mathbb{E}_{y_{<t} \sim P(Y_{<t}|X)} H(Y_t | [X, y_{<t}])$.}
+
+We provide an empirical verification of position-wise entropy trend on MMLU~\citep{hendrycks2021measuring} dataset in \cref{fig: entropy_sequential_dynamic} with \textsc{Llama-3-8B-Instruct}. 
+
+This position-dependent entropy curve provides a clear map for applying a classic RL insight: an agent should explore more in states of high uncertainty~\citep{ziebart2008maximum, schulman2017equivalence, haarnoja2018soft}. By aligning our strategy with the natural dynamics of generation, we arrive at a simple yet powerful design principle: \textbf{explore early and exploit late}. This involves applying strong exploration when the generative path is wide and gradually shifting to exploitation as it narrows. In the next section, we will introduce a concrete method that instantiates this principle.
+
+\begin{figure}[t!]
+    \centering
+    \begin{subfigure}[b]{0.45\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{iclr2026/figures/branching_factor_figure/piecewise_ebf_Llama-3-8B-Instruct_mean_seq_entropy_fixed_start.pdf}
+    \caption{}
+    \label{fig: entropy_sequential_dynamic}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.54\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{iclr2026/figures/branching_factor_figure/bon_from_middle_demo.pdf}
+    \caption{}
+    \label{fig: forking}
+    \end{subfigure}
+    
+\label{fig:motivation}
+\caption{The beginning part of a generation is important. \textbf{Left:} Entropy dynamics for Llama-3-8B-Instruct on MMLU dataset. \textbf{Right:} Branching Out in the middle of a generation significantly harms the model performance. }
+\end{figure}
+
+
+% \section{Global-Step-Aware Exploratory Annealed Decoding for RLVR}
+\section{Exploratory Annealed Decoding}
+\label{sec: method}
+% From \cref{sec:exploitation-vs-exploration}, we know that different positions within one generation exhibit varying significance levels. In particular, the beginning portion bears greater significance. 
+To realize the principle of \emph{exploring at the beginning but exploiting at the end} in text generation, we introduce a decoding strategy, \emph{Exploratory Annealed Decoding} (EAD), employs an annealed temperature schedule with a higher-than-usual starting temperature ($\tau>1$). To adapt this strategy to reinforcement learning with verifiable reward (RLVR), we further incorporate a \emph{global-step-aware decay rate}, ensuring that the temperature schedule remains effective as the typical response length evolves during training.
+\paragraph{Exploratory Annealed Decoding.} Instead of adopting a fixed temperature, we start with a higher-than-usual temperature $\tau_{\mathrm{max}}>1$ and vary the temperature along with the generation.
+Specifically, we sample the $t$-th token for one rollout 
+% from the annealed distribution $y_{t} \sim \pi^{\text{EAD}}_{\theta}(\cdot\mid [x, y_{<t}]; T_t)$ 
+with the token-level temperature $\tau_t$:
+\begin{align*}
+    \tau_t = \max\{1 + \tau_\mathrm{max} - e^{t/d}, \tau_\mathrm{min}\}
+\end{align*}
+We apply the annealing schedule with a \emph{decay rate} $d$ controlling the annealing speed. 
+As illustrated in \cref{fig: annealing_schedule_demo}, a larger $d$ slows down the temperature cooling rate and thus encourages exploration of alternative generations for more early-position tokens (``front-load'' exploration), while a smaller $d$ does the opposite. Furthermore, we choose $\tau_\mathrm{max}=1.2$ and $\tau_\mathrm{min}=0.1$ to avoid performance degradation caused by extreme temperatures, following the empirical guide in previous works ~\citep{renze-2024-effect, guo2025deepseek, hou2025t1}. 
+
+In practice, we let $\tau_t = 1.0$ for $t<c$, where $c$ is a pre-determined initial position for the sake of model-specific or prompt-specific template tokens injected in the training process. During RLVR, language models tend to generate some template tokens such as ``\textit{let's verify step by steps}'' or repeat the question. We set the temperature $\tau=1.0$ for this part to avoid intervening generation of this part.
+
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.7\linewidth]{iclr2026/figures/annealing_schedule_plot.pdf}
+    \caption{Demonstration of Annealing Schedule with $c=10, \tau_{\mathrm{max}}=1.2, \tau_{\mathrm{min}}=0.1$. }
+    \label{fig: annealing_schedule_demo}
+\end{figure}
+
+\paragraph{Global-Step-Aware Decay Rate.}
+As response lengths increase as training progresses, the decay rate should be adjusted along with the training step. Otherwise, overly many tokens are generated under extremely low temperature, hurting responses' quality, resulting in undesired outputs (e.g., repetition~\citep{Holtzman2020The, guo2025deepseek}). 
+% \lin{Add more reasons later.}
+In particular, we adopt the following \emph{global-step-aware decay rate}:
+\[
+d_s = \min(d_0 + 5s, 40000).
+\]
+
+\paragraph{[Optional] Truncated Importance Sampling Correction.} 
+When extreme values of $\tau_{\mathrm{max}}$ or $\tau_{\mathrm{min}}$ are chosen, a subtle yet troublesome drawback of EAD is that it can induce off-policy issue and destabilize RL training. To mitigate this bias and ensure stable optimization, the \emph{truncated importance sampling} technique\citep{heckman1998matching, hilton2022batch,yao2025offpolicy} can be adopted. More details refer to \Cref{sec:more-tis}.
+
+
+% In summary, the method is summarized as follows:
+% \begin{tcolorbox}
+% \textbf{Global-Step-Aware Exploratory Annealed Decoding for RLVR:}
+% \begin{align}
+%     \tau_t &= 
+%     \begin{cases}
+%         \max\{1 + \tau_\mathrm{max} - e^{t/d_s}, \tau_\mathrm{min}\} & t \geqslant c \\
+%         1.0 & t < c
+%     \end{cases}\\
+%     d_s &= \min(d_0 + 5s, 40000)
+% \end{align}
+% \end{tcolorbox}
+
+The proposed method enjoys several benefits over the existing RLVR approaches:
+(i) It is a plug-in-and-play scheme to existing RLVR pipeline, with straightforward implementation and the same computational cost compared with standard temperature sampling. This feature distinguishes itself from other widely adopted top-p sampling \citep{Holtzman2020The} as no logits sorting process is required; (ii) The method is compatible to any subsequent optimization phase of RL algorithms. 
+
+% Another way to address this issue is inspired by  Behavior Policy Search (BPS)~\citep{hanna2017data}, which iteratively select a behavior policy to improve off-policy evaluation in a data-efficient way. Our key insight here is, if we happen to sample some rollout $y$ with disproportionally high probability under $\pi_{\theta_{\text{old}}}(\cdot \mid x)$ , it is largely because that many tokens are under low-temperature and thus sampling these tokens under AS is close to conducting greedy sampling. 
+
+% Based on this insight, we propose to gradually reduce the distribution mismatch by adjusting $d$ with the optimization step $s$:
+% \begin{equation}
+%     d_s = \min(d_0 + 5s, 40000)
+% \end{equation}
+% Intuitively, with the optimization going on, we are gradually slowing down the annealing speed and assimilating the distribution shift within the generation sequence. 
+
+
+% Such case can happen to reinforcement learning with annealed sampling, especially when the decay rate is fast (i.e., $d$ is small). When $d$ is small, most tokens in the rollout samples are sampled under low temperature, leading to larger likelihood ratios. Accordingly, the aggressive clipping mechanism is triggered (\cref{fig: off_policy_pg_clipfrac}), and the gradient norm also goes unstable (\cref{fig: off_policy_grad_norm}), leading to a performance drop (\cref{fig: off_policy_best_at_16}).
+
+% AS essentially makes the RL training to be off-policy one because now the sampling policy and actor policy will have significant divergence. This can lead to a training instability problem
+% since the original importance ratio $r_{i,t}(\theta)$ is no longer able to fix the bias. 
+% Take GRPO + AS as an example, under AS sampling, if we do not change the loss otherwise, the actual loss function we are optimizing is:
+
+% \begin{equation}
+%     J_{\text{GRPO-AS}}(\theta) =
+% \E_{x \sim \mathcal{D},y^{(1:G)}\overset{iid}{\sim} \mathbin{\color{red}\pi_{\theta_{\text{old, AS}}}(\cdot\mid x)}}
+% \left[\frac{1}{G}\sum_{i=1}^G\frac{1}{|y^{(i)}|}\sum_{i=1}^{|y^{(i)}|}\min\left\{r^{(i)}_{\theta,t} A_i,\mathrm{clip}\left(r^{(i)}_{\theta,t},1-\varepsilon,1+\varepsilon\right)A_i\right\}
+% \right]
+% \label{eq: as_basic}
+% \end{equation}
+
+% To cancel such bias, the common way is to use importance sampling (IS). Following \citep{hilton2022batch, yao2025offpolicy}, we could modify the objective as below to recover the on-policy version:
+
+% \begin{equation}
+%     J_{\text{GRPO-AS (IS)}}(\theta) =
+% \E_{x \sim \mathcal{D},y^{(1:G)} \overset{iid}{\sim} \mathbin{\color{red}\pi_{\theta_{\text{old, AS}}}(\cdot\mid x)}}
+% \left[\mathbin{\color{blue}\frac{\pi_{\theta_{\text{old}}}(\cdot\mid x)}{\pi_{\theta_{\text{old, AS}}}(\cdot\mid x)}}\frac{1}{G}\sum_{i=1}^G\frac{1}{|y^{(i)}|}\sum_{i=1}^{|y^{(i)}|}\min\left\{r_{i,t}(\theta)A_i,\mathrm{clip}\left(r_{i,t}(\theta),1-\varepsilon,1+\varepsilon\right)A_i\right\}
+% \right]
+% \label{eq: as_importance_sampling_correction}
+% \end{equation}
+
+% Comparing \cref{eq: as_basic} and the unbiased version  \cref{eq: as_importance_sampling_correction}, it is clear that directly applying AS essentially introducing a weight $\left[\frac{\pi_{\theta_{\text{old}}}(y \mid x)}{\pi_{\theta_{\text{old, AS}}}(y \mid x)}\right]^{-1} = \frac{\pi_{\theta_{\text{old, AS}}}(y \mid x)}{\pi_{\theta_{\text{old}}}(y \mid x)}$ for each rollout sample $y$, and when such ratio is large enough, $y$ will receive a disproportional high weight in the whole loss and can lead to a significant large policy gradient loss, ruining the whole optimization in the middle. We demonstrate such failure in \cref{fig: optim_failure_for_as_offpolicy}. \ych{Perhaps we also need to copy/rephrase some content from the caption to this place to keep narrative coherence.}
+
+
+% which might lead to a large policy gradient loss if $\frac{\pi_{\theta_{\text{old}}}(\cdot\mid [x, y_{<i}]; T_i)}{\pi_{\theta_{\text{old}}}(\cdot\mid [x, y_{<i}]; T)}$ is huge. 
+% See \cref{todo} for an illustration. \ych{TODO: let's explain this more clearly in formulation}. 
+
+% Theoretically, we can fix this item by in-place  replacement of $\pi_{\theta_{\text{old}}}(\cdot\mid [x, y_{<i}]; T)$ to be $\pi_{\theta_{\text{old}}}(\cdot\mid [x, y_{<i}]; T_i)$. However, this recovers the original multinomial sampling schemes by unfairly reweighting the high-quality samples, defeating the purpose of designing more efficient RL exploration strategies.
+% While effective in correcting the bias, IS would introduce high variance and would increase the model entropy, which leads to slow convergence and suboptimal performance. In the extreme case, when the importance ratio is very large, it would ruin the whole RL train process. To address this, we would use Truncated Importance Sampling (TIS)~\citep{heckman1998matching}.\footnote{Similar techniques have been also adopted to correct floating error in verl framework~\citep{sheng2024hybridflow, yao2025offpolicy} when using vLLM~\citep{kwon2023efficient} for rollout sampling.}  Specifically, we will truncate the importance ratio up to $\epsilon=2.0$ following empirical prior study in off-policy RL~\citep{yao2025offpolicy}, as shown in \cref{eq: as_importance_sampling_correction_truncated}. \ych{leave this part for @Lin for more rigorous formulation and explanation.} 
+
+% \begin{equation}
+%     J_{\text{GRPO-AS (TIS)}}(\theta)
+% =\E_{x \sim \mathcal{D},y^{(1:G)}\overset{iid}{\sim} \mathbin{\color{red}\pi_{\theta_{\text{old, AS}}}(\cdot\mid x)}}
+% \left[\mathbin{\color{blue}\min\left(\frac{\pi_{\theta_{\text{old}}}(\cdot\mid x)}{\pi_{\theta_{\text{old, AS}}}(\cdot\mid x)}, \epsilon\right)}\frac{1}{G}\sum_{i=1}^G\frac{1}{|y^{(i)}|}\sum_{i=1}^{|y^{(i)}|}\min\left\{r_{i,t}(\theta)A_i,\mathrm{clip}\left(r_{i,t}(\theta),1-\varepsilon,1+\varepsilon\right)A_i\right\}
+% \right]
+% \label{eq: as_importance_sampling_correction_truncated}
+% \end{equation}
+
+
+
+% which we will gradually increase with the optimization step $t$. 
+% This design is to ensure we will not intervene in templated tokens generation, while ensuring a stable and smooth schedule change as the training goes on, as the off-policy effects gradually surfaces out. 
+% To see the effects of increasing $d_t$ more clearly, we can examine the average temperature $\bar{T}_{c:L}$ for subsequences $y_{c:L}$:
+% \begin{equation}
+%     \bar{T}_{c:L} = \frac{1}{L}\sum_{i=1}^L T_L = T_{min} + (T_{max}  - T_{min})\cdot(b - \frac{1-\exp((L+1)/(20d_t))}{1-\exp(0.05d_t)})
+% \end{equation}
+
+% \subsection{Global-Step-Aware Annealed Sampling for RLVR}
+% \lin{Summarize the method! I make a tentative name. Change or remove it as long as you don't like it.}
+% Based on previous observation, we introduce \emph{Global-Step-Aware Annealed Sampling}. Specifically, at global step $s$ and for token at position $t$, we adopt the sampling temperature 
+% \begin{tcolorbox}
+% \textbf{Global-Step-Aware Annealed Sampling for RLVR:}
+% \begin{align}
+%     T_t &= 
+%     \begin{cases}
+%         \max\{1 + \tau_\mathrm{max} - e^{t/d_s}, \tau_\mathrm{min}\} & t \geqslant c \\
+%         1.0 & t < c
+%     \end{cases}\\
+%     d_s &= \min(d_0 + 5s, 40000)
+% \end{align}
+% \end{tcolorbox}
+
+% \begin{tcolorbox}
+% (Optional) \textbf{Truncated Importance~Sampling (TIS):}
+% \begin{align}
+% \E_{x \sim \mathcal{D},y{\sim}{\pi^{\text{EAD}}_{\theta_{\text{old}}}(\cdot\mid x)}}
+% \left[{\color{blue}\min\left(\frac{\pi^{\text{EAD}}_{\theta_{\text{old}}}(y\mid x)}{\pi_{\theta_{\text{old}}}(y\mid x)},\varepsilon\right)}\times(\mathrm{TBD~Training~Loss})\right].
+% \end{align}
+% \end{tcolorbox}
+
+% % Briefly discuss our advantage
+% The proposed method enjoys several benefits over the existing RLVR approaches:
+% (i) It is a plug-in-and-play scheme to existing RLVR pipeline, with straightforward implementation and the same computational cost compared with standard temperature sampling. This feature distinguishes itself from other widely adopted top-p sampling \citep{Holtzman2020The} as no logits sorting process is required; (ii) The method is compatible to any subsequent optimization phase of RL algorithms. 
+
+% First, it is easy to implement and is computationally friendly. It requires only a slight modification of the per-token next token distribution, incurring similar computational costs to standard temperature sampling. Noted that its computation overhead is even less than widely adopted top-p sampling \citep{Holtzman2020The} as no logits sorting process is required. 
+% In addition, this method provides high flexibility as it can be integrated with any preferred robust RL algorithms. Since we do not alter the RL process by directly changing the training objective, any trust-region constraint such as clipping can be preserved for robust optimization.
+% Moreover, no computation budget is wasted since the inference budget is utilized effectively and no rollouts are discarded.
+
+\section{Experiments}
+
+\subsection{Experimental Setup}
+\paragraph{Setup.} To ensure fair comparison among different rollout sampling strategies, we follow the Minimal-RL recipe~\citep{xiong2025minimalist} to use Numina-Math~\citep{numina_math_7b} to train our models. Numina-Math consists of 860k math prompts and labeled grounded-truth answers. We conduct experiments with both Qwen2.5-Math-1.5B~\citep{yang2024qwen2} and Llama-3.2-1B-Instruct~\citep{dubey2024llama}\footnote{We also tried to use Llama-3.2-1B Base model in experiments, but as reported in \citet{wang2025octothinker}, without proper mid-training (domain-specific fine-tuning), it is relatively hard to RL train Llama Base models to observe significant performance gain. We leave further investigation on this part for future work. } models for generality. All experiments are conducted within % the GRPO~\citep{shao2024deepseekmath} and 
+DAPO~\citep{yu2025dapo} algorithms. More training details and hyperparameter setup could be found in \cref{app: minimal_rl_training_details}. Among most experiments, we set $\tau_{\max}=1.2$ and $d=25$ for EAD. We empirically find that for larger model with stronger generative capability, using overly small $\tau_{\text{small}}$ would trigger the model to generate seemingly correct but wrong answers over held-out validation set. For 1B models, we use $\tau_{\min}=0.1$ and we use $\tau_{\text{small}}=0.8$ based on prior running. 
+
+\textbf{Baselines}. We evaluate EAD against standard fixed-temperature sampling with temperatures $\tau \in \{0.6, 1.0, 1.2\}$. These values are chosen based on recommendations from prior work to establish strong baselines~\citep{renze-2024-effect, guo2025deepseek, hou2025t1}. 
+For a fair and controlled comparison, we disable two features for all methods: (1) dynamic sampling~\citep{yu2025dapo}, to ensure all prompts are used during training, and (2) rollout length penalties, to avoid biasing the sampling process. As discussed in \cref{sec: method}, these techniques are orthogonal to our contribution and we leave further investigation about this to future work. 
+% \ych{Shall we demonstrate a case that with all techniques in place, using standard training recipe like DAPO, how well our model could be?}
+
+
+\subsection{\algname Improves RLVR Performance}
+\begin{figure}[ht!]
+    \centering
+\begin{subfigure}[t]{0.44\textwidth}
+\centering
+\includegraphics[width=\linewidth]{iclr2026/figures/best_at_16_Llama-3.2-1B-Instruct.pdf}
+\caption{Llama-3.2-1B-instruct}
+\end{subfigure}
+\begin{subfigure}[t]{0.44\textwidth}
+\centering
+\includegraphics[width=\linewidth]{iclr2026/figures/best_at_16_Qwen2.5-Math-1.5B.pdf}
+\caption{Qwen-2.5-Math-1.5B}
+\end{subfigure}
+\begin{subfigure}[t]{0.1\textwidth}
+\centering
+\vspace{-2.8cm}
+\includegraphics[width=\linewidth]{iclr2026/figures/legend-bon.pdf}
+\end{subfigure}
+\caption{Pass@16 on Math-500 during RL training. On both Llama-3.2-1B-Instruct and Qwen2.5-Math-1.5B models, EAD could help RL algorithm to (optionally with TIS technique to further correct the bias) achieve better performance across time, significantly improving training efficiency. 
+% \ych{Make it Figure 1! "sequential cool decoding"? (suggested by victor)}
+}
+\label{fig: main_bench_best_at_16}
+\end{figure}
+
+
+\paragraph{\algname Improves RL Exploration Performance.}
+As shown in \cref{fig: main_bench_best_at_16,fig: main_bench_worst_at_16}, \algname (EAD) significantly improves training efficiency. For best@16 accuracy, both EAD (w/o TIS) and EAD (w/ TIS) consistently outperform the baselines on the Llama and Qwen models, demonstrating more effective exploration. Under the stricter worst@16 metric, the inclusion of TIS becomes essential for maintaining stable performance gains, highlighting its importance for correcting the off-policy training dynamic introduced by EAD. Through bootstrapping evaluation as recommended by \citep{hochlehnert2025sober}, the standard deviation of both best@16 performance and worst@16 are way below 0.01 and thus all comparisons here are significant. 
+
+We further verify the experiment results with larger model, Qwen2.5-Math-7B, and we demonstrate the experiment results in \cref{fig: best_at_16_qwen2.5_7b}. We can see that the performance gain brought by EAD still significant when the model size is enlarged, verifying the generalization of our proposed method. 
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.5\linewidth]{iclr2026/figures/best_at_16_Qwen2.5-Math-7B.pdf}
+    \caption{Qwen2.5-Math-7B}
+    \label{fig: best_at_16_qwen2.5_7b}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+\begin{subfigure}[b]{0.44\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{iclr2026/figures/worst_at_16_Llama-3.2-1B-Instruct.pdf}
+    \caption{Llama-3.2-1B-Instruct}
+\end{subfigure}
+\begin{subfigure}[b]{0.44\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{iclr2026/figures/worst_at_16_Qwen2.5-Math-1.5B.pdf}
+    \caption{Qwen2.5-Math-1.5B}
+\end{subfigure}
+\begin{subfigure}[t]{0.1\textwidth}
+    \centering
+    \vspace{-3.5cm}
+    \includegraphics[width=\linewidth]{iclr2026/figures/legend-bon.pdf}
+\end{subfigure}
+  \caption{Worst@16 Performance Evaluation in RL Training. While in most of time, EAD could help model to explore high-quality samples in training for the whole distribution (so even the worst samples could win over ordinary multinomial samples), this gain is not sustained, and importance sampling could step in as a good supplement to correct the bias and support prolonged training.  }
+  \label{fig: main_bench_worst_at_16}
+\end{figure}
+
+\paragraph{\algname Mitigates Entropy Collapse}
+One notorious problem in RLVR training is the entropy collapse problem~\citep{cui2025entropy}, which indicates the shrinkage of exploration space and limits the potential for the model to further improve at the later stage of RL training (``plateau stage''~\citep{deng2025trial}). We plot the entropy dynamic in \cref{fig: main_bench_entropy}, where we can see that the entropy dynamic for EAD-empowered methods is not monotonically decreasing from the beginning. Instead, it tries to gradually transition out from local optimum~\citep{kirkpatrick1983optimization, bertsimas1993simulated} in a natural, continuous way without any external intervention, such as introducing tree search in rollout sampling~\citep{li2025treepo}.
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}[b]{0.44\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{iclr2026/figures/entropy_Llama-3.2-1B-Instruct.pdf}
+    \caption{Llama-3.2-1B-Instruct}
+  \end{subfigure}
+      \begin{subfigure}[b]{0.44\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{iclr2026/figures/entropy_Qwen2.5-Math-1.5B.pdf}
+    \caption{Qwen2.5-Math-1.5B}
+  \end{subfigure}
+  \begin{subfigure}[t]{0.1\textwidth}
+    \centering
+    \vspace{-3.5cm}
+    \includegraphics[width=\linewidth]{iclr2026/figures/legend-bon.pdf}
+\end{subfigure}
+  \caption{Entropy Dynamics in RL Training. Under commonly-used temperature sampling, trained with RL algorithm would make entropy decrease, sharply shrinking the exploration space for RL from beginning. While EAD could help RL algorithm to escape local minimum and do exploration when needed in the middle of RL training. }
+  \label{fig: main_bench_entropy}
+\end{figure}
+
+\paragraph{Sample Efficiency of \algname.}
+While expensive, upsampling rollouts ~\citep{hou2025t1} is a common strategy to encourage exploration in RL training and is orthogonal to our \algname strategy. We demonstrate the rollout scaling results in \cref{fig: main_bench_rollout_scaling}. We also vary the learning rate following the empirical observation in \citep{chen2025pass} that rollout upsampling will be more effective with larger learning rate. Here we can find that upsampling rollouts would also help EAD improve the performance, but the commonly used $4$ or $8$ rollout is already good enough for RL training ($n=8$, learning rate$=10^{-6}$ works best for Llama-3.2-1B-Instruct, $n=8$, learning rate$=2\times10^{-6}$ works best for Qwen2.5-Math-1.5B). This indicates great sample efficiency of Annealed Sampling and help save the computation in rollout sampling. 
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}[b]{0.4\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{iclr2026/figures/scaling_rollout/best_at_16_Llama-3.2-1B-Instruct_scaling_rollout-new.pdf}
+    \caption{Llama-3.2-1B-Instruct}
+  \end{subfigure}
+    \begin{subfigure}[b]{0.4\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{iclr2026/figures/scaling_rollout/best_at_16_Qwen2.5-Math-1.5B_scaling_rollout-new.pdf}
+    \caption{Qwen2.5-Math-1.5B}
+  \end{subfigure}
+  \begin{subfigure}[t]{0.15\textwidth}
+    \centering
+    \vspace{-3.5cm}
+    \includegraphics[width=\linewidth]{iclr2026/figures/scaling_rollout/legend-scaling.pdf}
+\end{subfigure}
+  \caption{\algname would bring further performance improvement via increased numbers of rollouts, but the commonly used $4$ or $8$ is already good enough. }
+  \label{fig: main_bench_rollout_scaling}
+\end{figure}
+
+We further compare with our baseline on extended $16$ rollouts to assess whether the advantage brought by our method would fade away with sufficient rollouts. The results are demonstrated in \cref{fig: rollout_modelwise_compare}. We see that though the relative edge of our method over traditional temperature sampling shrinks, our method still outperforms traditional temperature sampling by a clear margin. 
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}[b]{0.44\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{iclr2026/figures/rollout16_modelwise_compare/best_at_16_Llama-3.2-1B-Instruct_scaling_rollout-new.pdf}
+    \caption{Llama-3.2-1B-Instruct}
+  \end{subfigure}
+      \begin{subfigure}[b]{0.44\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{iclr2026/figures/rollout16_modelwise_compare/best_at_16_Qwen2.5-Math-1.5B_scaling_rollout-new.pdf}
+    \caption{Qwen2.5-Math-1.5B}
+  \end{subfigure}
+  \begin{subfigure}[t]{0.1\textwidth}
+    \centering
+    \vspace{-3.5cm}
+    \includegraphics[width=\linewidth]{iclr2026/figures/legend-bon.pdf}
+\end{subfigure}
+  \caption{When scaling out the rollout number to 16, the relative advantages of our methods diminished; however, it still outperforms traditional same-temperature sampling.}
+  \label{fig: rollout_modelwise_compare}
+\end{figure}
+
+
+\subsection{\algname Improves Inference-Time Scaling}
+To better understand whether EAD truly helps by introducing high-valuable samples and to delineate the optimization effects when comparing exploration methods~\citep{berseth2025exploration}, we conduct an inference-time evaluation comparing EAD with normal temperature sampling with off-the-shelf LLMs. Specifically, we adopt majority voting to aggregate sample results~\citep{wang2023selfconsistency} to see how well different decoding methods would impact inference-time scaling~\citep{snell2024scaling}. The experiment results for Qwen2.5 model families are demonstrated in \cref{fig: inference_time_scaling}. We could see that adopting EAD improves over temperature sampling for most $N$ in $\text{Majority}@N$, indicating that even without any training, EAD could still help the model discover high-valuable samples, verifying its effectiveness. 
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}[b]{0.44\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{iclr2026/figures/inference_time_scaling/Qwen2.5-Math-1.5B_majority.pdf}
+    \caption{Qwen2.5-Math-1.5B}
+  \end{subfigure}
+      \begin{subfigure}[b]{0.44\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{iclr2026/figures/inference_time_scaling/Qwen2.5-Math-7B_majority.pdf}
+    \caption{Qwen2.5-Math-7B}
+  \end{subfigure}
+%   \begin{subfigure}[t]{0.1\textwidth}
+%     \centering
+%     \vspace{-3.5cm}
+%     \includegraphics[width=\linewidth]{iclr2026/figures/legend-bon.pdf}
+% \end{subfigure}
+  \caption{Inference-Time Scaling Evaluation for Different Decoding Methods using off-the-shelf Qwen2.5 models. We could see that \algname improves traditional temperature sampling. We set $\tau_{\text{max}}=1.2, \tau_{\text{min}}=0.1, d=25$ for EAD. }
+  \label{fig: inference_time_scaling}
+\end{figure}
+% \subsection{Ablation Study}
+
+\section{Related Work}
+
+\paragraph{Reinforcement Learning with Verifiable Rewards}  Recent large-scale reasoning models such as OpenAI o1~\citep{openai2024learning}, DeepSeek‑R1~\citep{guo2025deepseek} have demonstrated that reinforcement‑learning–based post‑training can substantially enhance LLM reasoning. Motivated by this reinforcement learning with verifiable rewards (RLVR) (e.g.~\citet{shao2024deepseekmath,guo2025deepseek,lambert2024tulu,yang2025qwen3,hu2025open,yu2025dapo,guan2025rstar,zeng2025simplerl} among many other works) has become a major approach for post‑training LLMs to improve reasoning. A broad literature studies how to make RLVR training effective and efficient at scale, including novel reinforcement learning algorithms and objectives~\citep{yu2025dapo,liu2025understanding,yue2025vapo,zheng2025group}, verifier architecture and reward deigns~\citep{zuo2025ttrl,zhao2025learning,agarwal2025unreasonable,prabhudesai2025maximizing}, and mechanisms that manage exploration diversity and entropy~\citep{cheng2025reasoning,chen2025pass,cui2025entropy,wang2025beyond}, or takes a critical view on the current evaluation~\citep{yue2025does,zhao2025echo,hochlehnert2025sober}. Despite steady progress, a fundamental challenge is to balance exploration and exploitation along long reasoning trajectories without brittle heuristics. We adopt a simple yet effective annealed sampling schedule that front‑loads exploration and cools later steps during rollout to encourage exploration while keeping training stable.
+
+\paragraph{Exploration Control in RLVR} A line of works that is close to our work studies how to control exploration and sampling while doing RLVR~\citep{cheng2025reasoning,chen2025pass,cui2025entropy,wang2025beyond,xiong2025minimalist,deng2025trial,xu2025not,zheng2025act,dou2025improving}. In particular, \citet{cheng2025reasoning} propose per-token entropy to focus exploration at branching tokens in sampling; \citet{chen2025pass} transform per-prompt rewards to optimize pass@k, guiding exploration across samples; \citet{cui2025entropy} control high-covariance tokens to prevent entropy collapse and sustain exploration; \citet{wang2025beyond} update only high-entropy tokens, concentrating exploration where decisions split. Different from prior work, this paper presents the first systematic analysis of sampling temperature and introduce a purely sampling-level annealed schedule that encourages exploration and then progressively stabilize answers, thereby enabling discovery of new solutions while yielding more stable training.
+
+% \ych{@chenxiao, perhaps also \citep{hou2025t1}, \citep{li2025treepo} and \citep{deng2025trial}? Also I am not sure we can claim ourselves as ``systematic analysis of sampling temperature''?}
+
+\paragraph{Simulated Annealing} 
+% The idea of annealing can trace back to 
+Simulated Annealing (SA) is a probabilistic optimization technique inspired by annealing in metallurgy, designed to find the global optimum in a large search space \citep{kirkpatrick1983optimization, bertsimas1993simulated}. The core principle involves a temperature parameter that controls the probability of accepting suboptimal states. Initially, a high temperature allows the search to escape local minima by exploring broadly (exploration). As the temperature gradually decreases, the algorithm increasingly favors better states, converging towards a high-quality solution (exploitation).
+This "coarse-to-fine" search dynamic, where high temperatures establish a solution's general structure and low temperatures refine its details, strongly parallels the generative process of LLMs \citep{yang2025alignment}. SA has been adapted in various machine learning contexts to manage the exploration-exploitation trade-off, including recent applications in graph optimization~\citep{liu2021simulated}, text editing \citep{zhang2024edt}, non-autoregressive generation \citep{israel2025enabling}, and efficient Best-of-N sampling \citep{manvi2024adaptive}. However, these prior applications invariably apply a single, uniform temperature across all positions in a generated sequence. This approach fails to account for the heterogeneous roles of tokens at different positions \citep{wang2025beyond}. Our work departs from this convention. To the best of our knowledge, we are the first to introduce an \textbf{intra-sequence annealed temperature} schedule, where the temperature varies dynamically within the generation of a single sequence. This novel approach allows for more nuanced control over exploration and leads to significant performance gains in RLVR.
+% This simulated annealing technique is designed for naturally guiding the sampling process to explore high-entropy area first and gradually move to more deterministic low-entropy areas.
+
+\section{Discussion}
+Our work addresses a central challenge in RLVR: fostering effective exploration and exploitation. We propose Exploratory Annealed Decoding (EAD), a simple yet powerful sampling strategy that forgoes heavy computation and intricate heuristics. EAD applies a temperature-annealing schedule that begins with a high sampling temperature and gradually cools, enabling large language models to explore broadly early in a rollout and to converge to focused, high-quality completions toward the end. This approach improves exploration–exploitation trade-offs in RLVR while remaining flexible enough to integrate with diverse reinforcement learning algorithms. It also shows promise as a general test-time inference technique.
+
+While EAD is simple and effective, several practical considerations remain. First, we observe that the optimal temperature schedule is not universal: the preferred maximum and minimum temperatures can vary with model size. We leave a systematic investigation of such scaling behavior to future work. Second, excessively small ending temperatures may induce off-policy effects, reducing training robustness as generated trajectories diverge from the on-policy distribution. A similar phenomenon can appear in supervised fine-tuning, where usage of off-policy data easily brings overfitting. 
+When applying more aggressive reinforcement algorithms, we therefore recommend avoiding overly low ending temperatures or employing truncated importance-sampling (TIS) corrections to preserve training stability.
+
+In summary, EAD provides a simple yet general way to couple exploration with the inherent progression of language generation. By reducing algorithmic overhead while improving trajectory quality, it opens new avenues for both efficient inference and effective reinforcement fine-tuning.
+
+
+\bibliography{iclr2026_conference}
+\bibliographystyle{iclr2026_conference}
+
+\newpage
+\appendix
+\section{Minimal-RL Training Details}
+\label{app: minimal_rl_training_details}
+We mainly follow the Minimal-RL recipe~\citep{xiong2025minimalist} in our experiments to ensure a fair comparison among different rollout sampling strategies. Specifically, we set a series of hyperparameters as in \cref{tab: hyperparameter}:
+
+\begin{table}[h!]
+\centering
+% \resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}cc@{}}
+\toprule
+Hyperparameter                                 & Value(s)        \\ 
+\midrule
+\multicolumn{1}{c}{Training Batch Size}      & \multicolumn{1}{c}{1024} \\ 
+\multicolumn{1}{c}{Max Prompt Length}        & \multicolumn{1}{c}{1024} \\ 
+\multicolumn{1}{c}{Max Response Length}      & \multicolumn{1}{c}{3072} \\ 
+\multicolumn{1}{c}{Mini Batch Size}          & \multicolumn{1}{c}{256}  \\ 
+\multicolumn{1}{c}{Micro Batch Size Per GPU} & \multicolumn{1}{c}{4}    \\ 
+\multicolumn{1}{c}{Learning Rate}            & \multicolumn{1}{c}{$10^{-6}$} \\ 
+\bottomrule
+\end{tabular}%
+% }
+\caption{Hyperparameter Setup for Running Minimal-RL recipe. }
+\label{tab: hyperparameter}
+\end{table}
+
+\section{Sampling Techniques Can Introduce Off-Policy Issue}
+\label{sec:more-tis}
+One subtle yet troublesome drawback of RLVR with \algname is that it simultaneously introduces the \emph{off-policy} problem, which might cause training to fail (See \cref{fig:optim_failure_for_as_offpolicy}). This issue arises from the mismatch between the distribution generating the responses and the distribution being optimized. To cancel such bias while guarantee training robustness, we add \emph{truncated importance sampling} technique \citep{heckman1998matching, hilton2022batch,yao2025offpolicy}. Taking the vanilla policy gradient loss as an example, the modified loss is as follows:
+\begin{align*}
+\E_{x \sim \mathcal{D},y{\sim}{\pi^{\text{EAD}}_{\theta_{\text{old}}}(\cdot\mid x)}}
+\left[{\color{blue}\min\left(\frac{\pi^{\text{EAD}}_{\theta_{\text{old}}}(y\mid x)}{\pi_{\theta_{\text{old}}}(y\mid x)},\varepsilon\right)}\frac{\pi_{\theta}(y\mid x)}{\pi_{\theta_{\text{old}}}(y\mid x)}A(y;x)\right].
+\end{align*}
+In particular, we pre-specify $\varepsilon=0.2$.
+
+Noted that this off-policy issue widely exists. Any efficient sampling framework \citep{yao2025offpolicy} and sampling strategy can induce a different sampling distribution from the one directly parametrized by $\theta$.
+Take the policy gradient loss as an example:
+\begin{align*}
+\E_{x \sim \mathcal{D},y{\sim} \mathbin{\color{red}\pi^{\text{sampling}}_{\theta_{\text{old}}}(\cdot\mid x)}}
+\left[\frac{\pi_{\theta}(y\mid x)}{\pi_{\theta_{\text{old}}}(y\mid x)}A(y;x)\right] 
+=\E_{x \sim \mathcal{D},y{\sim} \mathbin{\pi_{\theta_{\text{old}}}(\cdot\mid x)}}\left[{\color{red}\frac{\pi^{\text{sampling}}_{\theta_{\text{old}}}(y\mid x)}{\pi_{\theta_{\text{old}}}(y\mid x)}}\times\frac{\pi_{\theta}(y\mid x)}{\pi_{\theta_{\text{old}}}(y\mid x)}A(y;x)\right],
+\end{align*}
+where $\pi^{\text{sampling}}_{\theta_{\text{old}}}(\cdot\mid x)$ represents the underlying sampling distribution. 
+In such case, an extra weight is implicitly added to each response in addition to its advantage $A(y;x)$. 
+% For instance, when applying best-of-n sampling \citep{xiong2025minimalist} or filtering out responses \citep{shrivastava2025sample}, the underlying distribution of responses is implicitly altered.
+Such techniques can extensively be applied to prevent extreme likelihood ratios and the resulting huge gradients, thereby enhancing training stability. 
+
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}[b]{0.26\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{iclr2026/figures/off_policy_problem/pg_clipfrac_Qwen2.5-Math-1.5B.pdf}
+    \caption{Clip Fraction Surge}
+    \label{fig: off_policy_pg_clipfrac}
+  \end{subfigure}
+  \begin{subfigure}[b]{0.28\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{iclr2026/figures/off_policy_problem/grad_norm_Qwen2.5-Math-1.5B.pdf}
+    \caption{Gradient Norm Surge.}
+    \label{fig: off_policy_grad_norm}
+  \end{subfigure}
+   \begin{subfigure}[b]{0.27\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{iclr2026/figures/off_policy_problem/best_at_16_Qwen2.5-Math-1.5B.pdf}
+    \caption{Drastic Best@16 Drop}
+     \label{fig: off_policy_best_at_16}
+  \end{subfigure}
+  \begin{subfigure}[t]{0.1\textwidth}
+    \centering
+    \vspace{-2.5cm}
+    \includegraphics[width=\linewidth]{iclr2026/figures/off_policy_problem/legend-fig3.pdf}
+  \end{subfigure}
+  \caption{Off policy samples bring training instability. The base model is Qwen2.5-Math-1.5B.}
+  \label{fig:optim_failure_for_as_offpolicy}
+\end{figure}
+
+
+\end{document}

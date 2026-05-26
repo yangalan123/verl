@@ -1,0 +1,49 @@
+\section{Discussion}
+% this paragraph is for summary
+Our work addresses a central challenge in RLVR: achieve an effective balance between exploration and exploitation.
+%
+We introduce \algname (\alg), a simple yet powerful sampling strategy that avoids heavy computation and intricate heuristics.
+%
+Specifically, \alg employs a temperature-annealing schedule that begins with a high sampling temperature and gradually cools, enabling LLMs to explore broadly at the beginning of generation and converge toward precise, high-quality completions throughout the decoding process.
+%
+As RLVR often relies on multiple rollouts to estimate rewards, this annealing schedule effectively improves sampling diversity while controlling variance, making it well suited for RL training.
+%
+At the same time, \alg can also be applied directly at test time to enhance inference efficiency and scaling, improving the quality of single- or multi-sample decoding without additional computation cost.
+%
+% This approach improves exploration–exploitation trade-offs in RLVR while remaining flexible enough to integrate with diverse RL algorithms. 
+%
+% It also shows promise as a general test-time inference technique.
+
+% limitations
+Despite the encouraging results, our study has several limitations that suggest directions for future work. 
+%
+First, the scaling behavior of our method is not fully explored because of limited computational resources. 
+%
+We adopt the current settings with reference to~\citep{xiong2025minimalist,shao2025spurious,wang2025reinforcement}, and argue that the efficacy of the method is still convincing, as we evaluate it across diverse model structures (LLaMA and Qwen) and multiple model sizes. 
+%
+A systematic scaling study remains an important next step.
+%
+% Second, we mainly evaluate the method with DAPO.
+% % \zz{should we still say this? as we now include result grpo and entropymech.} 
+% %
+% We chose DAPO because its effectiveness is well established and its asymmetric clip (clip-high) is friendly to exploration. 
+% Second, while our method is complementary to many existing exploration-promoting RLVR algorithms (as detailed in \cref{sec: related_work}), we did not have the resources to conduct an extensive study combining our algorithm with all of them. 
+% %
+% Combining our \alg with more advanced RL algorithms designed to promote exploration is a promising direction for future research. 
+Second, while \alg is designed as a complementary component, a comprehensive study combining it with other advanced exploration-promoting RLVR algorithms (see \cref{sec: related_work}) remains a promising direction for future work.
+%
+Third, our current experiments adopt a uniform temperature schedule for all prompts. 
+%
+Although an adaptive schedule tailored to individual prompts could potentially enhance performance, developing such a mechanism is nontrivial. 
+%
+In RLVR, training is iterative, so any prior information about prompt distributions may shift during optimization, and collecting extra statistics (e.g., token-wise entropy quantile~\citep{wang2025beyond}, or probability-advantage covariance~\citep{cui2025entropy}) to track these changes for every prompt would add computational overhead and system complexity~\citep{li2025treepo, liu2025uniform}.
+%
+For these reasons, we focus on the vanilla schedule to test the core efficacy of our method, leaving adaptive scheduling for future investigation.
+%
+
+% While EAD is simple and effective, several practical considerations remain. First, we observe that the optimal temperature schedule is not universal: the preferred maximum and minimum temperatures can vary with model size. We leave a systematic investigation of such scaling behavior to future work. Second, excessively small ending temperatures may induce off-policy effects, reducing training robustness as generated trajectories diverge from the on-policy distribution. A similar phenomenon can appear in supervised fine-tuning, where usage of off-policy data easily brings overfitting. 
+% When applying more aggressive reinforcement algorithms, we therefore recommend avoiding overly low ending temperatures or employing truncated importance-sampling (TIS) corrections to preserve training stability.
+
+In summary, \alg provides a simple yet general way to couple exploration with the inherent progression of language generation. 
+%
+By reducing algorithmic overhead while improving trajectory quality, it opens new avenues for both efficient inference and effective reinforcement fine-tuning.

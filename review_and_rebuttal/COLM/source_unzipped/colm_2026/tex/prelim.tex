@@ -1,0 +1,166 @@
+\section{Preliminary}\label{sec:prelim}
+\shortparagraph{Notations.} 
+% In this paper, $\pi_\theta$ refers to the distribution of an LLM  parameterized by $\theta$. 
+% $\pi_{\mathrm{ref}}$ is the reference model, which is usually the starting point of RL. 
+% A prompt is written as $x$ and a response as $y$. 
+% $y_t$ and $y_{<t}$ are the $t$-th token and all tokens before it of the response $y$, respectively. 
+% Given a prompt $x$, the conditional distribution is $\pi_\theta(\cdot \mid x)$, and $\pi_\theta(y \mid x)=\Pi_{t}\pi_\theta(y_t \mid [x, y_{<t}])$ is the probability of a specific response $y$ under autoregressive LLMs. 
+% We use $\mathcal{D}$ to represent a set of prompts. 
+% $|\cdot|$ represents the length of a response or the cardinality of a set. $R(x, y)$ refers to a reward model evaluating prompt–response pairs. In the domain of RLVR, we use commonly used Math-Verify rule-based reward model.\footnote{\url{https://github.com/huggingface/Math-Verify}} 
+% The notation ``$1:n$'' stands for the set $\{1, \dots, n\}$.
+Let $x$ be a prompt from a dataset $\mathcal{D}$, and let $y = (y_1, \dots, y_{|y|})$ be a generated response sequence, where $y_{<t}$ denotes the prefix $(y_1, \dots, y_{t-1})$. We define an LLM as a policy $\pi_\theta$ parameterized by $\theta$, and denote the reference policy, i.e., the starting point for RL, as $\pi_{\mathrm{ref}}$. The probability of generating $y$ given $x$ is defined autoregressively as $\pi_\theta(y \mid x) = \prod_{t=1}^{|y|} \pi_\theta(y_t \mid [x, y_{<t}])$. A reward model $R(x, y)$ evaluates the quality of a prompt-response pair; for our RLVR experiments, we use the rule-based Math-Verify reward model.\footnote{\url{https://github.com/huggingface/Math-Verify}} Finally, we use $|\cdot|$ to denote the length of a sequence or the cardinality of a set, and use the shorthand $1:n$ for the set $\{1, \dots, n\}$.
+%
+
+% \paragraph{Reinforcement learning with verifiable reward (RLVR).}
+% RL for fine-tuning language models typically optimizes the expected reward:
+% \begin{equation}
+% \label{eq:rl-main-objective}
+%     \max_\theta \mathit{J}(\theta) := \E_{x \sim \mathcal{D}, y \sim \pi_\theta(\cdot\mid x)}\left[ R(x, y) \right].
+% \end{equation}
+% In reasoning tasks, conventional reward models often suffer from \emph{reward hacking}~\citep{wcq2025beyond}, failing to reliably separate correct from incorrect responses. 
+% \citet{guo2025deepseek} address this by using verifiers as rewards, which directly check correctness and provide binary feedback, ensuring the RL process is guided by reliable signals.
+
+% RLVR algorithms commonly build on policy gradient (PG)~\citep{williams1992simple}. 
+% %
+% To improve robustness, \citet{schulman2015trust,schulman2017proximal} introduce the trust region constraints and propose a surrogate loss whose gradients match PG estimates. 
+% %
+% The widely adopted PPO-clipping algorithm optimizes
+% %
+% \begin{small}
+% \begin{equation*}
+% J_{\text{PPO}}(\theta) =
+% \E_{x \sim \mathcal{D},y \sim \pi_{\theta_{\text{old}}}(\cdot\mid x)}
+% \left[\frac{1}{|y|}
+% \sum_{t=0}^{|y|}\min\left\{r_t(\theta)A_t,\mathrm{clip}\left(r_t(\theta),1-\varepsilon,1+\varepsilon\right)A_t\right\}
+% \right],
+% \end{equation*}
+% \end{small}where $r_t(\theta)=\tfrac{\pi_{\theta}(y_t \mid [x, y_{<t}])}{\pi_{\theta_{\text{old}}}(y_t \mid [x, y_{<t}])}$ and $A_t$ is the advantage derived from $R(x,y)$ and KL divergence from the reference model to reduce variance of gradient estimation.
+% %
+% To avoid computing token-level advantages and maintaining an extra value model, subsequent works~\citep{shao2024deepseekmath,yu2025dapo} simplify the advantage computation.
+% %
+% % and optimize a modified objective, known as GRPO:
+% % \begin{align*}
+% % J_{\text{GRPO}}(\theta) =&
+% % \E_{x \sim \mathcal{D},y^{(1:G)} \overset{iid}{\sim} \pi_{\theta_{\text{old}}}(\cdot\mid x)}
+% % \left[\frac{1}{G}\sum_{i=1}^G\frac{1}{|y^{(i)}|}\sum_{i=1}^{|y^{(i)}|}\min\left\{r^{(i)}_{\theta,t}A_i,\mathrm{clip}\left(r^{(i)}_{\theta,t},1-\varepsilon,1+\varepsilon\right)A_i\right\}
+% % \right]\\
+% % &\quad-\beta\E_{x\sim D}\left[\mathbb{D}_{\mathrm{KL}}\left(\pi_\theta(\cdot\mid x)\|\pi_{\mathrm{ref}}(\cdot\mid x)\right)\right]
+% % \end{align*}
+% % where $r^{(i)}_{\theta,t}=\frac{\pi_{\theta}(y^{(i)}_{t} \mid y^{(i)}_{<t})}{\pi_{\theta_{\text{old}}}(y^{(i)}_{t} \mid y^{(i)}_{<t})}$ and the advantage is shared across tokens within one response and computed as
+% % \[
+% % A_i=\frac{R_i-\mathrm{mean}_{k\in[G]}(R_k)}{\mathrm{std}_{k\in[G]}(R_k)},~
+% % \mathrm{with}~R_i=R(x,y^{(i)}).
+% % \]
+% % \citet{yu2025dapo} adopt a different way to estimate the token mean, further remove the KL constraint, and utilize additional tricks that end with the following training objective:
+% Among these, one effective approach is decoupled clip and dynamic sampling policy optimization (DAPO)~\citep{yu2025dapo}, which optimizes the following objective:
+% %
+% \begin{small}
+% \begin{align*}
+% J_{\text{DAPO}}(\theta) 
+% &=\E_{x \sim \mathcal{D},y^{(1:G)} \overset{iid}{\sim} \pi_{\theta_{\text{old}}}(\cdot\mid x)}
+% \left[\frac{1}{\sum_{i=1}^G |y^{(i)}|}\sum_{i=1}^G\sum_{i=1}^{|y^{(i)}|}\min\left\{r^{(i)}_{t}(\theta)A_i,\mathrm{clip}\left(r^{(i)}_{t}(\theta),1-\varepsilon,1+\varepsilon\right)A_i\right\}
+% \right]\\
+% &\mathrm{s.t.}\quad0<\left|\{y^{(i)}:y^{(i)}\mathrm{~is~correct}\}\right|<G,
+% \end{align*}
+% \end{small}where $r^{(i)}_{t}(\theta)=\frac{\pi_{\theta}(y^{(i)}_{t} \mid [x, y^{(i)}_{<t}])}{\pi_{\theta_{\text{old}}}(y^{(i)}_{t} \mid [x, y^{(i)}_{<t}])}$ and the advantage is shared across tokens within one response and computed as: 
+% \begin{small}
+% \begin{equation}
+% A_i=\frac{R_i-\mathrm{mean}_{k\in 1:G}(R_k)}{\mathrm{std}_{k\in 1:G}(R_k)},~
+% \mathrm{with}~R_i=R(x,y^{(i)}). \nonumber
+% \end{equation}
+% \end{small}
+\shortparagraph{Reinforcement Learning with Verifiable Rewards (RLVR).}
+The standard objective for reinforcement fine-tuning of LLMs is to maximize the expected reward over a prompt dataset $\mathcal{D}$:
+\begin{equation}
+\label{eq:rl-main-objective}
+    \max_\theta J(\theta) := \E_{x \sim \mathcal{D}, y \sim \pi_\theta(\cdot\mid x)}\left[ R(x, y) \right].
+\end{equation}
+However, on complex reasoning tasks, learned reward models $R(x,y)$ are prone to \emph{reward hacking}, where they assign high scores to plausible but incorrect solutions \citep{gao2023scaling, perez2023discovering, weng2024rewardhack, wcq2025beyond}. RLVR addresses this by replacing the learned model with a verifiable, rule-based reward signal—such as a verifier that provides binary feedback on a solution's correctness \citep{guo2025deepseek}. This ensures that the policy is optimized using a reliable signal.
+
+RLVR is commonly implemented using policy gradient algorithms like Proximal Policy Optimization (PPO) \citep{schulman2017proximal}. However, standard PPO often requires complex token-level advantage estimation and a separate value model. To better suit RLVR's trajectory-level binary rewards, subsequent methods simplify the advantage calculation \citep{shao2024deepseekmath,yu2025dapo}. A prominent example is Decoupled Clip and Dynamic Sampling Policy Optimization (DAPO)~\citep{yu2025dapo}, which optimizes:
+
+\vspace{-15pt}
+\begin{small}
+\begin{align*}
+&J_{\text{DAPO}}(\theta)=\E_{\substack{x \sim \mathcal{D},\\y^{(1:G)} \overset{iid}{\sim} \pi_{\theta_{\text{old}}}(\cdot\mid x)}} 
+\left[\frac{1}{\sum_{i=1}^G |y^{(i)}|}
+\sum_{i=1}^G\sum_{t=1}^{|y^{(i)}|}\min\left\{r^{(i)}_{t}(\theta)A_i,\mathrm{clip}\left(r^{(i)}_{t}(\theta),1-\varepsilon_{\text{low}},1+\varepsilon_{\text{high}}\right)A_i\right\}
+\right]\\
+&\mathrm{s.t.}\quad 0<\left|\{y^{(i)}:y^{(i)}\mathrm{~is~correct}\}\right|<G,
+\end{align*}
+\end{small}
+\vspace{-15pt}
+
+where $\pi_{\theta_{\text{old}}}$ refers to previous policy and $r^{(i)}_{t}(\theta)=\frac{\pi_{\theta}(y^{(i)}_{t} \mid [x, y^{(i)}_{<t}])}{\pi_{\theta_{\text{old}}}(y^{(i)}_{t} \mid [x, y^{(i)}_{<t}])}$.  The asymmetric bound $\varepsilon_{\text{high}} > \varepsilon_{\text{low}}$ is proposed to relax the restriction on probability increase and encourage exploration in the training. 
+% DAPO's key simplification is to use a single advantage value $A_i$ for all tokens in a response $y^{(i)}$. 
+The advantage $A_i$ is computed by normalizing the binary rewards across a batch of $G$ responses, thus avoiding the need for a value model:
+
+% \vspace{-8pt}
+\begin{small}
+\begin{equation*}
+A_i=\frac{R_i-\mathrm{mean}_{k\in 1:G}(R_k)}{\mathrm{std}_{k\in 1:G}(R_k)},~
+\text{where } R_i=R(x,y^{(i)}).
+\end{equation*}
+\end{small}
+% \vspace{-8pt}
+
+%
+% where $r_{\theta,t}^{(i)}$ and $A_i$ are the same as those of GRPO.
+%%% original starts here%%%
+% For a fixed prompt $\inputval$, let $\pi_\theta(\outputval \mid \inputval)$ denote the output distribution for the policy model and $R(x, y) \in \{0, 1\}$ be the verifiable binary reward functions for input $\inputval$ and output sample $\outputval$. Various RL algorithms such as PPO~\citep{schulman2017proximal} and GRPO~\citep{shao2024deepseekmath} are optimizing different variants of the following objective:
+% \begin{equation}
+%     \max_\theta \mathit{J}(\theta) \defeq \E_{\inputval \sim \mathit{D}, \outputval \sim \pi_\theta(\outputval | \inputval)}\left[ R(x, y) \right]
+% \end{equation}
+% \ych{Lin and Chenxiao: Can you complete this part? I am relatively unfamiliar with writing this part. But basic idea is to establish some notations and terminologies (e.g., PPO/GRPO formulation, advantage, clipping, KL-regularization, etc.) that we can use later. }
+%%% original ends here%%%
+
+% \paragraph{Temperature sampling.}
+% Given a prefix $l=[x$, LLM predicts the next token by applying the softmax function over the vocabulary logits.
+% %
+% Temperature sampling~\citep{ACKLEY1985147} introduces a temperature parameter $\tau$ to modify the softmax:
+% \[
+% \pi_\theta(o_k\mid l;~\tau) = \frac{e^{h_k/\tau}}{\sum_{i}e^{h_i/\tau}},
+% \]
+% where $o_k$ is the $k$-th vocabulary token and $h_k$ is its logit determined by $l$ and $o_k$. 
+% %
+% A higher temperature increases output diversity by allowing the model to consider less probable tokens. 
+% %
+% In the context of on-policy RL, this encourages the model to explore a wider range of outputs.
+\shortparagraph{Temperature.}
+Temperature sampling \citep{ACKLEY1985147} is a widely used method to control the stochasticity of the policy $\pi_\theta$. At each generation step $t$, the LLM computes a vector of logits, $\mathbf{h}$, over the vocabulary $V$ based on the prompt $x$ and the preceding tokens $y_{<t}$. Temperature sampling rescales these logits with a parameter $\tau > 0$ before applying the softmax function to form the next-token probability distribution:
+$$
+\pi_\theta(y_t = v \mid [x, y_{<t}]; \tau) = \frac{\exp(h_v / \tau)}{\sum_{v' \in V} \exp(h_{v'} / \tau)},
+$$
+where $v$ is a token in the vocabulary $V$ and $h_v$ is its corresponding logit. The temperature $\tau$ directly modulates the sharpness of the output distribution. A higher temperature ($\tau > 1$) flattens the distribution, increasing output diversity by making less likely tokens more probable. Conversely, a lower temperature ($\tau < 1$) sharpens it, leading to more deterministic, greedy outputs. 
+% In the context of RL, this mechanism is crucial for exploration, as a higher temperature encourages the policy to discover a wider range of responses.
+%
+
+% \begin{figure}[t]
+% \centering
+% \includegraphics[width=0.55\linewidth]{figures/branching_factor_figure/piecewise_ebf_Llama-3-8B-Instruct_mean_seq_entropy_fixed_start.pdf}
+% \caption{Average entropy shrinks with output positions for Llama-3-8B-Instruct on MMLU dataset.}
+% \label{fig: entropy_sequential_dynamic}
+% \vspace{-0.15in}
+% \end{figure}
+
+
+\shortparagraph{Pass@$\bm k$.} 
+Pass@$k$ measures the probability that at least one of $k$ independent outputs from a language model is correct. 
+%
+Let $p_x$ denote the per-prompt accuracy of the model $\pi$. The pass@$k$ accuracy is defined as $\E_{x\sim\mathcal{D}}\left[1-(1-p_x)^k\right].$
+%
+High diversity benefits this metric, as a model with diverse outputs is more likely to maintain non-negligible $p_x$ across prompts.
+%
+
+\shortparagraph{Entropy.} 
+Given a prompt $x$ and a prefix $y_{<t}$, the \textbf{token-level entropy} at step $t$ is defined over the policy's conditional distribution:
+\begin{align*}
+&H(Y_t \mid [x, y_{<t}]; \theta) := 
+-\sum_{v \in V} \pi_\theta(y_t = v \mid [x, y_{<t}]) \log \pi_\theta(y_t = v \mid [x, y_{<t}]),
+\end{align*}
+where the sum is over all tokens $v$ in the vocabulary $V$.
+
+The \textbf{average entropy} of the policy, $H(\pi_\theta)$, is the expected token-level entropy over all prompts and generation steps. We can estimate this value empirically using Monte Carlo sampling. For each prompt $x \in \mathcal{D}$, we generate $G$ i.i.d. responses $y^{(1)}, \dots, y^{(G)}$. The average entropy is then approximated by averaging the token-level entropies across all tokens:
+$$
+\bar{H}(\pi_\theta) \approx \frac{1}{|\mathcal{D}|} \sum_{x \in \mathcal{D}} \left( \frac{1}{\sum_{i=1}^G |y^{(i)}|}{\sum_{i=1}^G \sum_{t=1}^{|y^{(i)}|} H(Y_t \mid [x, y^{(i)}_{<t}]; \theta)} \right).
+$$

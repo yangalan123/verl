@@ -1,0 +1,62 @@
+% \section{Discussion}
+% % this paragraph is for summary
+% Our work addresses a central challenge in RLVR: achieve an effective balance between exploration and exploitation.
+% %
+% We introduce \algname (\alg), a simple yet powerful sampling strategy that avoids heavy computation and intricate heuristics.
+% %
+% Specifically, \alg employs a temperature-annealing schedule that begins with a high sampling temperature and gradually cools, enabling LLMs to explore broadly at the beginning of generation and converge toward precise, high-quality completions throughout the decoding process.
+% %
+% As RLVR often relies on multiple rollouts to estimate rewards, this annealing schedule effectively improves sampling diversity while controlling variance, making it well suited for RL training.
+% %
+% At the same time, \alg can also be applied directly at test time to enhance inference efficiency and scaling, improving the quality of single- or multi-sample decoding without additional computation cost.
+
+% \revise{
+% % \paragraph{Why Early Exploration?} 
+% % A key premise of \alg is that exploration is most valuable in the early stages of generation. We argue that early branching promotes diversity in reasoning paths, whereas late-stage branching often yields trajectories that share long prefixes, offering limited additional information for training. Furthermore, relying on high entropy at the final steps to ``stumble'' upon a solution (i.e., a ``lucky'' success via a low-probability token) can introduce high variance and off-policy issues, destabilizing training. By annealing the temperature, \alg encourages the model to commit to robust reasoning paths where the correct answer follows logically from the prefix, rather than random sampling. This is empirically supported by our Reverse Annealing ablation (see \cref{sec:experiments}), where delaying exploration degraded performance.
+% % 
+% % \paragraph{Simplicity as a Strength.} 
+% While \alg is conceptually simple, this simplicity is a deliberate design choice to ensure scalability and ease of adoption. Unlike complex strategies that require multi-threading~\citep{pan2025learning} or tracking additional statistics~\citep{cui2025entropy}, \alg adds zero computational overhead and integrates seamlessly with standard training pipelines. Our results demonstrate that this lightweight approach consistently outperforms baselines across diverse models and RL algorithms, suggesting that effective exploration need not come at the cost of system complexity.
+
+% }
+% %
+% % This approach improves exploration–exploitation trade-offs in RLVR while remaining flexible enough to integrate with diverse RL algorithms. 
+% %
+% % It also shows promise as a general test-time inference technique.
+
+% % limitations
+% Despite the encouraging results, our study has several limitations that suggest directions for future work. 
+% %
+% First, our evaluation focuses on mathematical reasoning with verifiable rewards across diverse model families (LLaMA and Qwen) and sizes (1B--8B). While the ``explore early, exploit late'' principle is grounded in a general property of autoregressive generation (\cref{sec:exploitation-vs-exploration}), evaluating \alg on other verifiable domains (e.g., code generation) and at larger scales remains an important direction.
+% %
+% Second, our primary evaluation uses multi-sample metrics (Pass@$k$, Worst@$k$, Majority@$N$), which are the natural metrics for RLVR since it inherently relies on generating multiple rollouts per prompt. Single-sample metrics (e.g., Pass@1) are less informative in this context, as the variance of a single rollout provides a noisy signal for both training and evaluation. Investigating the interplay between exploration strategies and single-path generation quality, as well as combining \alg with other advanced exploration-promoting algorithms (see \cref{sec: related_work}), are promising directions.
+% %
+% Third, our experiments adopt a uniform temperature schedule across all prompts. Although an adaptive, prompt-specific schedule could further enhance performance, developing such a mechanism is nontrivial---collecting extra statistics (e.g., token-wise entropy quantile~\citep{wang2025beyond} or probability-advantage covariance~\citep{cui2025entropy}) adds computational overhead and system complexity~\citep{li2025treepo, liu2025uniform}. We leave adaptive scheduling for future investigation.
+%
+
+% While EAD is simple and effective, several practical considerations remain. First, we observe that the optimal temperature schedule is not universal: the preferred maximum and minimum temperatures can vary with model size. We leave a systematic investigation of such scaling behavior to future work. Second, excessively small ending temperatures may induce off-policy effects, reducing training robustness as generated trajectories diverge from the on-policy distribution. A similar phenomenon can appear in supervised fine-tuning, where usage of off-policy data easily brings overfitting. 
+% When applying more aggressive reinforcement algorithms, we therefore recommend avoiding overly low ending temperatures or employing truncated importance-sampling (TIS) corrections to preserve training stability.
+
+% COLM 2026 version starts
+\section{Discussion}
+We introduce \algname (\alg), a simple yet powerful sampling strategy for RLVR that employs a temperature-annealing schedule---exploring broadly at the beginning of generation and converging toward high-quality completions as decoding progresses. This schedule improves sampling diversity while controlling variance across multiple rollouts, and can also be applied at test time to enhance inference-time scaling. While conceptually simple, this simplicity is a deliberate design choice: unlike strategies requiring multi-threading~\citep{pan2025learning} or tracking additional statistics~\citep{cui2025entropy}, \alg adds zero computational overhead, integrates seamlessly with standard pipelines, and consistently outperforms baselines across diverse models and RL algorithms.
+
+\shortparagraph{Limitations and Future Directions.}
+Despite the encouraging results, several limitations suggest directions for future work:
+% \begin{itemize}[wide, labelwidth=!, labelindent=0pt, nosep, leftmargin=*]
+\textit{Domain scope.} Our evaluation focuses on mathematical reasoning across diverse model families (LLaMA, Qwen) and sizes (1B--8B)\colmedit{, with additional code-reasoning experiments on Qwen-2.5-Coder-1.5B-Instruct (LiveCodeBench, HumanEval+) reported in \cref{app:code_experiments}}. While ``explore early, exploit late'' is grounded in a general property of autoregressive generation (\cref{sec:exploitation-vs-exploration}), extending \alg to \colmedit{further} verifiable domains and larger scales remains important.
+%
+\textit{Assumption scope.} The ``explore early'' principle reflects an \emph{expected} trend in entropy dynamics; individual sequences may contain critical late-stage decisions (e.g., a final numerical answer). \alg mitigates this via a non-zero floor temperature $\tau_{\min}$, but an adaptive schedule that allocates exploration to high-uncertainty positions regardless of their location could further improve performance.
+%
+\textit{Evaluation metrics.} We primarily use multi-sample metrics (Pass@$k$, Worst@$k$, Majority@$N$), the natural choice for RLVR which inherently relies on multiple rollouts. Investigating the interplay with single-sample quality (e.g., Pass@1) and combining \alg with complementary exploration methods (\cref{sec: related_work}) are promising directions.
+%
+\textit{Hyperparameter sensitivity.} While \alg is robust across a wide range of hyperparameters (\cref{app:ablation_details}), the optimal $\tau_{\min}$ varies with model capability ($0.1$ for 1B, $0.8$ for 7B). A systematic study of how schedule parameters scale with model size would facilitate adoption.
+% \end{itemize}
+% COLM 2026 version ends
+
+In summary, \alg provides a simple yet general way to couple exploration with the inherent progression of language generation. 
+%
+By reducing algorithmic overhead while improving trajectory quality, it opens new avenues for both efficient and effective RLVR.
+
+
+%
+% In summary, \alg provides a simple yet general way to couple exploration with the inherent progression of language generation, opening new avenues for both efficient inference and effective reinforcement fine-tuning.

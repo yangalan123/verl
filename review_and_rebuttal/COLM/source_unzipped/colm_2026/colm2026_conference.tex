@@ -1,0 +1,138 @@
+\documentclass{article} % For LaTeX2e
+\usepackage[submission]{colm2026_conference}
+
+\input{math_commands.tex}
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{amssymb}
+\usepackage{amsthm}
+
+\usepackage{microtype}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{lineno}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{nicefrac}
+\usepackage{xcolor}
+\usepackage{enumitem,kantlipsum}
+\usepackage{pifont}
+\usepackage{xspace}
+\usepackage{multirow}
+\usepackage{tikz}
+\usepackage{wrapfig}
+% ===== BEGIN COLM REBUTTAL EDIT: algorithm pseudocode support =====
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+% ===== END COLM REBUTTAL EDIT =====
+
+\definecolor{darkblue}{rgb}{0, 0, 0.5}
+\hypersetup{colorlinks=true, citecolor=darkblue, linkcolor=darkblue, urlcolor=darkblue}
+
+\newcommand{\revise}[1]{{ #1}}
+\newcommand{\shortparagraph}[1]{\noindent\textbf{#1}}
+
+% ===== BEGIN COLM REBUTTAL EDIT: revision markup =====
+% Wrap any text added during the COLM rebuttal in \colmedit{...}. Set the
+% boolean to `false` before camera-ready to silently remove the highlight.
+\newif\ifcolmrev\colmrevtrue
+\ifcolmrev
+  \newcommand{\colmedit}[1]{{\color{blue}#1}}
+  \newcommand{\colmnote}[1]{\textcolor{red}{[\textsc{rev}: #1]}}
+\else
+  \newcommand{\colmedit}[1]{#1}
+  \newcommand{\colmnote}[1]{}
+\fi
+% ===== END COLM REBUTTAL EDIT =====
+
+\usepackage[capitalize,noabbrev]{cleveref}
+\crefname{section}{$\mathsection$}{$\mathsection\mathsection$}
+\Crefname{section}{$\mathsection$}{$\mathsection\mathsection$}
+\crefname{figure}{Fig.}{Fig.}
+\Crefname{figure}{Figure}{Figures}
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{hypothesis}{Hypo}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\usepackage[normalem]{ulem}
+\usepackage{bbm}
+\newcommand{\defeq}{\mathrel{\stackrel{\textnormal{\tiny def}}{=}}}
+\usepackage{array}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}m{#1}}
+\newcolumntype{H}{>{\setbox0=\hbox\bgroup}c<{\egroup}@{}}
+
+\newcommand{\circone}{\ding{172}\xspace}
+\newcommand{\circtwo}{\ding{173}\xspace}
+\newcommand{\circthree}{\ding{174}\xspace}
+\newcommand{\circfour}{\ding{175}\xspace}
+\newcommand{\outputVar}{\mathrm{Y}}
+\newcommand{\outputval}{y}
+\newcommand{\inputVar}{\mathrm{X}}
+\newcommand{\inputval}{x}
+
+\usepackage{csquotes}
+\usepackage{titlesec}
+\titlespacing\section{0pt}{4pt}{4pt}
+\titlespacing\subsection{0pt}{2pt}{2pt}
+\titlespacing\subsubsection{0pt}{0pt}{0pt}
+\titlespacing\paragraph{0pt}{0pt}{4pt}
+\newcommand{\algname}{Exploratory Annealed Decoding\xspace}
+\newcommand{\alg}{EAD\xspace}
+
+\title{Let it Calm: Exploratory Annealed Decoding for Verifiable Reinforcement Learning}
+
+\author{Anonymous Authors \\
+Affiliation \\
+\texttt{email}
+}
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\begin{document}
+
+\ifcolmsubmission
+\linenumbers
+\fi
+
+\maketitle
+
+\begin{abstract}
+Reinforcement learning with verifiable rewards (RLVR) is a powerful paradigm for enhancing the reasoning capabilities of large language models (LLMs), yet its success hinges on effective exploration. An ideal exploration strategy must navigate two fundamental challenges: it must preserve sample quality while also ensuring training stability. While standard fixed-temperature sampling is simple, it struggles to balance these competing demands, as high temperatures degrade sample quality and low temperatures limit discovery. In this work, we propose a simpler and more effective strategy, \algname (\alg), grounded in the insight that exploration is most impactful on early tokens which define a sequence's semantic direction. \alg implements an intuitive \textit{explore at the beginning, exploit at the end} strategy by annealing the sampling temperature from high to low during generation. 
+%
+This dynamic schedule encourages meaningful, high-level diversity at the start, then gradually lowers the temperature to preserve sample quality and keep the sampling distribution close to the target policy, which is essential for stable training. 
+%
+We demonstrate that \alg is a lightweight, plug-and-play method that significantly improves sample efficiency, consistently outperforming fixed-temperature sampling across various RLVR algorithms and model sizes. 
+%
+Our work suggests that aligning exploration with the natural dynamics of sequential generation offers a robust path to improving LLM reasoning.
+\end{abstract}
+
+\input{tex/introduction}
+
+\input{tex/prelim}
+
+\input{tex/sequential_exploration}
+
+\input{tex/method}
+
+\input{tex/experiments}
+
+\input{tex/related_work}
+
+\input{tex/discussion}
+
+\bibliography{colm2026_conference}
+\bibliographystyle{colm2026_conference}
+
+\input{tex/appendix}
+
+\end{document}

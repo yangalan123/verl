@@ -1,0 +1,42 @@
+\section{Introduction}
+\label{sec:introduction}
+
+Reinforcement learning with verifiable rewards (RLVR) is a powerful approach to enhance the capabilities of Large Language Models (LLMs), particularly in mathematical reasoning~\citep{openai2024learning, guo2025deepseek, team2025kimi, yang2025qwen3}. 
+In this framework, an LLM learns by iteratively generating potential solutions (i.e., rollouts), and receiving feedback on its attempts. 
+% I rewrite this sentence cuz the old one sounds awkward.
+A central challenge lies in guiding language models to explore diverse yet high-quality solutions in their vast output space~\citep{cheng2025reasoning};
+this reflects the long-standing hard trade-off between exploration and exploitation in RL~\citep{thrun1992efficient, sutton1998reinforcement}.
+
+To achieve effective exploration, the sampling process can be modified to increase the variance of its underlying distribution.
+However, any such modification involves two fundamental challenges.
+
+First, it must \textbf{preserve sample quality}. Increasing diversity at the cost of generating low-quality, nonsensical outputs is counterproductive.
+Second, it must \textbf{ensure training stability}.
+Modifying the sampler creates a discrepancy between the behavior policy (used for sampling) and the target policy (being optimized), necessitating an importance sampling (IS) correction in the gradient update~\citep{degris2012off}.
+Large IS probability ratios can cause high-variance gradients that destabilizes the entire training process~\citep{schulman2017proximal}.
+An ideal exploration technique must therefore increase diversity while keeping the sampling distribution close enough to the target policy to allow for stable learning~\citep{haarnoja2018soft, ziegler2019fine}.
+
+A principled approach to this trade-off is adjusting the sampling temperature~\citep{ACKLEY1985147, hou2025t1}, which is both simple and \emph{variationally optimal} (i.e., maximizing entropy and thereby increasing diversity while bounding KL divergence from the target policy~\citep{jaynes1957information}).
+However, relying on a single fixed temperature creates a tension:
+high temperature promotes diversity but produces nonsensical text~\citep{renze-2024-effect, wang2025beyond},
+whereas low temperature improves quality but limits exploration, yielding generic and repetitive outputs~\citep{Holtzman2020The, guo2025deepseek}.
+
+In this work, we propose \textbf{\algname (\alg)}, a strategy that improves the balance of this trade-off by leveraging a key insight into sequential generation: exploration is not equally valuable at every step.
+%
+The initial tokens shape a sequence's semantic direction and structure, making early exploration crucial for discovering diverse valid solutions. 
+%
+Later tokens, however, fill in details within the established context, where excessive exploration can harm coherence.
+%
+This insight motivates our core strategy: \textit{explore at the beginning, exploit at the end}. 
+%
+This simple principle elegantly addresses the twin challenges of quality and stability. 
+%
+Injecting randomness early promotes diverse, high-level exploration, while reducing it later ensures completions are both coherent and close to the target policy---an essential property for stable off-policy learning.
+
+In summary, our contributions are as follows:
+\begin{enumerate}[wide, labelwidth=!, labelindent=0pt, nosep]
+    \item[\circone] We propose \alg, a simple and effective exploration strategy for RLVR that dynamically anneals temperature to encourage diversity while maintaining high sample quality.
+    %
+    \item[\circtwo] We show \alg is a plug-and-play enhancement that improves sample efficiency over temperature sampling, delivering robust gains across various RLVR algorithms including GRPO~\citep{shao2024deepseekmath}, DAPO~\citep{yu2025dapo}, and EntropyMech~\citep{cui2025entropy} on both small and larger models.
+    \item[\circthree] We show that \alg can be adapted for test-time inference, where a tuned temperature schedule further enhances generation quality.
+\end{enumerate}

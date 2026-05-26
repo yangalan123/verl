@@ -1,0 +1,218 @@
+\section{A Method for Sequential Exploration}
+\label{sec: method}
+To put the principle of ``explore early, exploit late'' into practice, we introduce \emph{\algname (\alg)}, 
+% From \cref{sec:exploitation-vs-exploration}, we know that different positions within one generation exhibit varying significance levels. In particular, the beginning portion bears greater significance. 
+% To implement the principle of \emph{explore at the beginning, exploit at the end} in text generation, we propose a decoding strategy, \emph{\algname (\alg)}, 
+which uses an annealed temperature schedule starting from a higher-than-standard initial temperature (i.e., $\tau>1$). 
+% \revise{This schedule not only fosters diversity at the start but also improves training stability by reducing the temperature in later stages, preventing the model from relying on high-entropy random sampling to ``stumble'' upon correct answers (off-policy ``lucky'' successes).}
+%
+To adapt this strategy to RLVR, we further incorporate a \emph{global-step-aware decay rate}, ensuring that the temperature schedule remains effective as the typical response length increases during training.
+%
+
+\shortparagraph{Exploratory Annealed Decoding.} 
+% Instead of using a fixed temperature, we start with a higher-than-standard temperature $\tau_{\mathrm{max}}>1$ and vary the temperature along with the generation.
+% Instead of using a fixed temperature, we employ an annealed schedule that starts with $\tau_{\mathrm{max}}>1$ and decreases progressively throughout the generation process.
+Instead of a fixed temperature, our method dynamically adjusts the temperature $\tau_t$ for each token $t$ in a rollout. The schedule starts at a high temperature $\tau_\mathrm{max} > 1$ and decreases progressively throughout the generation process.
+%
+Specifically, we sample the $t$-th token for one rollout 
+% from the annealed distribution $y_{t} \sim \pi^{\text{EAD}}_{\theta}(\cdot\mid [x, y_{<t}]; T_t)$ 
+with the token-level temperature $\tau_t = \max\{1 + \tau_\mathrm{max} - e^{t/d}, \tau_\mathrm{min}\}$,
+%
+% \begin{align*}
+%     \tau_t = \max\{1 + \tau_\mathrm{max} - e^{t/d}, \tau_\mathrm{min}\}
+% \end{align*}
+%
+where we apply the annealed schedule with a \emph{decay rate} $d$ controlling the annealing speed.
+%
+As illustrated in \cref{fig: annealing_schedule_demo}, the decay rate $d$ controls how long the policy remains in a high-exploration state. A larger $d$ front-loads exploration across more initial tokens, while a smaller $d$ transitions to exploitation more quickly. 
+% In practice, we often keep $\tau_t = 1.0$ for a few initial tokens ($t<c$) to accommodate model-specific templates (e.g., ``Let's verify step-by-step'').
+%
+% Furthermore, we choose $\tau_\mathrm{max}=1.2$ and $\tau_\mathrm{min}=0.1$ to avoid performance degradation caused by extreme temperatures, following the empirical guide in previous works ~\citep{renze-2024-effect, guo2025deepseek, hou2025t1}\zz{Maybe we can be a bit vague here? i.e., just say $\tau_{max}$ and $\tau_{min}$ without values as we are using different ones for different models?}
+In practice, we let $\tau_t = 1.0$ for $t<c$, where $c$ is a pre-determined initial position for the sake of model-specific or prompt-specific template tokens injected in the training process. 
+%
+During RLVR, language models tend to generate some template tokens such as ``\textit{let's verify step by steps}'' or repeat the question. 
+%
+% We set the temperature $\tau=1.0$ for this part to avoid intervening generation of this part.
+%
+We fix the temperature at $\tau = 1.0$ in this part to avoid interfering with the generation process.
+%
+
+
+\shortparagraph{Global-Step-Aware Decay Rate.}
+As training progresses and response lengths increase,\footnote{We illustrate increased length for \alg in \cref{app: increased_length}. } the decay rate $d$ should be adjusted in accordance with the training step.
+%
+Otherwise, an excessive number of tokens may be generated under extremely low temperatures, which degrades response quality and leads to undesirable behaviors such as repetition~\citep{guo2025deepseek}, off-topic drift~\citep{spataru2024know}, and unnecessary verbosity~\citep{Holtzman2020The}. 
+%
+% \lin{Add more reasons later.}
+In particular, we adopt the following \emph{global-step-aware decay rate}:
+$d_s = \min(d_0 + \alpha \times s, d_{\max})$, where $\alpha > 0$ is the growth factor and $d_{\max}$ is the decay cap. 
+
+
+% \shortparagraph{Global-Step-Aware Decay Rate.}
+% During RL training, the average length of successful responses often increases. A fixed decay rate $d$ would cause later tokens in these longer responses to be sampled at an excessively low temperature, which can degrade quality~\citep{guo2025deepseek, Holtzman2020The}. To counteract this, we make the decay rate aware of the training progress by adapting it to the global training step $s$:
+% \[
+% d_s = \min(d_0 + k \cdot s, d_{\text{cap}}).
+% \]
+% where $d_0$ is the initial rate, $k$ is a scaling factor, and $d_{\text{ap}}$ is a maximum value.
+
+% \shortparagraph{[Optional] Truncated importance sampling correction.} 
+% When extreme values of $\tau_{\mathrm{max}}$ or $\tau_{\mathrm{min}}$ are used, \alg suffers from a subtle yet problematic drawback where it may induce off-policy issues that destabilize RL training. 
+% %
+% To correct this bias and maintain stable optimization, we employ the \emph{truncated importance sampling}~\citep{heckman1998matching, hilton2022batch,yao2025offpolicy}. 
+% %
+% More details are provided in \Cref{sec:more-tis}.
+%
+
+\shortparagraph{Ensuring Stability with Truncated  Importance Sampling.}
+% For particularly aggressive schedules (e.g., very small $\tau_\mathrm{min}$ and $d$), and in the rare case when we obtain long-tail low-probability samples, the annealed policy can deviate significantly from the reference policy, creating an off-policy discrepancy that may destabilize training.\footnote{See more technical discussions in \cref{app:variance_analysis_low_temp_is}} To mitigate this, we can optionally employ \emph{truncated importance sampling} (TIS)~\citep{heckman1998matching, hilton2022batch, yao2025offpolicy} to correct the optimization objective. This ensures stable training even with highly exploratory schedules (see \Cref{sec:more-tis} for details).
+% \shortparagraph{Truncated Importance Sampling Correction.}
+With aggressive annealing schedules (e.g., very small $\tau_\mathrm{min}$ and $d$), sampling low-probability, long-tail tokens can cause the annealed policy to deviate significantly from the one being optimized. This creates an off-policy discrepancy that risks training instability.  To mitigate this, we employ \emph{truncated importance sampling} (TIS)~\citep{heckman1998matching, hilton2022batch, yao2025offpolicy} to correct the objective, ensuring stable optimization even under highly exploratory schedules (see \Cref{sec:off-policy} for details).
+
+% In summary, the method is summarized as follows:
+% \begin{tcolorbox}
+% \textbf{Global-Step-Aware Exploratory Annealed Decoding for RLVR:}
+% \begin{align}
+%     \tau_t &= 
+%     \begin{cases}
+%         \max\{1 + \tau_\mathrm{max} - e^{t/d_s}, \tau_\mathrm{min}\} & t \geqslant c \\
+%         1.0 & t < c
+%     \end{cases}\\
+%     d_s &= \min(d_0 + 5s, 40000)
+% \end{align}
+% \end{tcolorbox}
+
+% At a high level, \alg offers several advantages over existing RLVR approaches:
+% (i) It serves as a plug-and-play component with existing RLVR pipelines, requiring only a straightforward implementation and incurring the same computational cost as fixed-temperature sampling. 
+% %
+% Unlike widely used top-$p$ sampling~\citep{Holtzman2020The}, \alg avoids the costly logits-sorting step;
+% %
+% % This feature distinguishes itself from other widely adopted top-p sampling \citep{Holtzman2020The} as no logits sorting process is required; 
+% and (ii) \alg remains fully compatible with any subsequent optimization phases of RL algorithms. 
+%
+Overall, this annealed decoding strategy offers a compelling combination of effectiveness and efficiency. As a plug-and-play modification to standard temperature sampling, it incurs negligible computational overhead and is fully compatible with existing RLVR pipelines and diverse policy optimization algorithms like DAPO, GRPO, etc.
+%% v1 ends here %%
+
+% \section{A Method for Sequential Exploration}
+% \label{sec: method}
+% To put the principle of ``explore early, exploit late'' into practice, we introduce \textbf{Exploratory Annealed Decoding}, a simple and effective temperature scheduling strategy. This method is designed for both RLVR training and inference-time generation. Its implementation consists of two core components: a token-level annealing schedule and a global-step-aware decay rate to maintain effectiveness during training.
+
+% \shortparagraph{The Dynamic Temperature Schedule.}
+% Instead of a fixed temperature, our method dynamically adjusts the temperature $\tau_t$ for each token $t$ in a rollout. The schedule starts at a high temperature $\tau_\mathrm{max} > 1$ and cools according to an exponential decay rate $d$:
+% \begin{align*}
+%     \tau_t = \max\{1 + (\tau_\mathrm{max} - 1) \cdot e^{-t/d}, \tau_\mathrm{min}\}
+% \end{align*}
+% \begin{wrapfigure}{r}{0.6\textwidth}
+% \vspace{-0.2in}
+%     \centering
+%     \includegraphics[width=\linewidth]{iclr2026/figures/annealing_schedule_plot.pdf}
+%     \caption{
+%         The annealing schedule with different decay rates $d$. A larger $d$ slows the cooling, front-loading exploration over more tokens.
+%     }
+%     \label{fig: annealing_schedule_demo}
+% \vspace{-0.2in}
+% \end{wrapfigure}
+% As illustrated in \cref{fig: annealing_schedule_demo}, the decay rate $d$ controls how long the policy remains in a high-exploration state. A larger $d$ front-loads exploration across more initial tokens, while a smaller $d$ transitions to exploitation more quickly. In practice, we often keep $\tau_t = 1.0$ for a few initial tokens ($t<c$) to accommodate model-specific templates (e.g., ``Let's verify step-by-step'').
+
+% \shortparagraph{Global-Step-Aware Decay Rate.}
+% During RL training, the average length of successful responses often increases. A fixed decay rate $d$ would cause later tokens in these longer responses to be sampled at an excessively low temperature, which can degrade quality~\citep{guo2025deepseek, Holtzman2020The}. To counteract this, we make the decay rate aware of the training progress by adapting it to the global training step $s$:
+% \[
+% d_s = \min(d_0 + k \cdot s, d_{\text{cap}}).
+% \]
+% where $d_0$ is the initial rate, $k$ is a scaling factor, and $d_{\text{ap}}$ is a maximum value.
+
+% \shortparagraph{Ensuring Stability with Importance Sampling.}
+% For particularly aggressive schedules (e.g., very high $\tau_\mathrm{max}$), the annealed policy can deviate significantly from the reference policy, creating an off-policy discrepancy that may destabilize training. To mitigate this, we can optionally employ \textbf{truncated importance sampling}~\citep{heckman1998matching, hilton2022batch, yao2025offpolicy} to correct the optimization objective. This ensures stable training even with highly exploratory schedules (see \Cref{sec:more-tis} for details).
+
+% \vspace{1em} 
+% Overall, this annealed decoding strategy offers a compelling combination of effectiveness and efficiency. As a plug-and-play modification to standard temperature sampling, it incurs negligible computational overhead and is fully compatible with existing RLVR pipelines and policy optimization algorithms like DAPO.
+%
+
+% Another way to address this issue is inspired by  Behavior Policy Search (BPS)~\citep{hanna2017data}, which iteratively select a behavior policy to improve off-policy evaluation in a data-efficient way. Our key insight here is, if we happen to sample some rollout $y$ with disproportionally high probability under $\pi_{\theta_{\text{old}}}(\cdot \mid x)$ , it is largely because that many tokens are under low-temperature and thus sampling these tokens under AS is close to conducting greedy sampling. 
+
+% Based on this insight, we propose to gradually reduce the distribution mismatch by adjusting $d$ with the optimization step $s$:
+% \begin{equation}
+%     d_s = \min(d_0 + 5s, 40000)
+% \end{equation}
+% Intuitively, with the optimization going on, we are gradually slowing down the annealing speed and assimilating the distribution shift within the generation sequence. 
+
+
+% Such case can happen to reinforcement learning with annealed sampling, especially when the decay rate is fast (i.e., $d$ is small). When $d$ is small, most tokens in the rollout samples are sampled under low temperature, leading to larger likelihood ratios. Accordingly, the aggressive clipping mechanism is triggered (\cref{fig: off_policy_pg_clipfrac}), and the gradient norm also goes unstable (\cref{fig: off_policy_grad_norm}), leading to a performance drop (\cref{fig: off_policy_best_at_16}).
+
+% AS essentially makes the RL training to be off-policy one because now the sampling policy and actor policy will have significant divergence. This can lead to a training instability problem
+% since the original importance ratio $r_{i,t}(\theta)$ is no longer able to fix the bias. 
+% Take GRPO + AS as an example, under AS sampling, if we do not change the loss otherwise, the actual loss function we are optimizing is:
+
+% \begin{equation}
+%     J_{\text{GRPO-AS}}(\theta) =
+% \E_{x \sim \mathcal{D},y^{(1:G)}\overset{iid}{\sim} \mathbin{\color{red}\pi_{\theta_{\text{old, AS}}}(\cdot\mid x)}}
+% \left[\frac{1}{G}\sum_{i=1}^G\frac{1}{|y^{(i)}|}\sum_{i=1}^{|y^{(i)}|}\min\left\{r^{(i)}_{\theta,t} A_i,\mathrm{clip}\left(r^{(i)}_{\theta,t},1-\varepsilon,1+\varepsilon\right)A_i\right\}
+% \right]
+% \label{eq: as_basic}
+% \end{equation}
+
+% To cancel such bias, the common way is to use importance sampling (IS). Following \citep{hilton2022batch, yao2025offpolicy}, we could modify the objective as below to recover the on-policy version:
+
+% \begin{equation}
+%     J_{\text{GRPO-AS (IS)}}(\theta) =
+% \E_{x \sim \mathcal{D},y^{(1:G)} \overset{iid}{\sim} \mathbin{\color{red}\pi_{\theta_{\text{old, AS}}}(\cdot\mid x)}}
+% \left[\mathbin{\color{blue}\frac{\pi_{\theta_{\text{old}}}(\cdot\mid x)}{\pi_{\theta_{\text{old, AS}}}(\cdot\mid x)}}\frac{1}{G}\sum_{i=1}^G\frac{1}{|y^{(i)}|}\sum_{i=1}^{|y^{(i)}|}\min\left\{r_{i,t}(\theta)A_i,\mathrm{clip}\left(r_{i,t}(\theta),1-\varepsilon,1+\varepsilon\right)A_i\right\}
+% \right]
+% \label{eq: as_importance_sampling_correction}
+% \end{equation}
+
+% Comparing \cref{eq: as_basic} and the unbiased version  \cref{eq: as_importance_sampling_correction}, it is clear that directly applying AS essentially introducing a weight $\left[\frac{\pi_{\theta_{\text{old}}}(y \mid x)}{\pi_{\theta_{\text{old, AS}}}(y \mid x)}\right]^{-1} = \frac{\pi_{\theta_{\text{old, AS}}}(y \mid x)}{\pi_{\theta_{\text{old}}}(y \mid x)}$ for each rollout sample $y$, and when such ratio is large enough, $y$ will receive a disproportional high weight in the whole loss and can lead to a significant large policy gradient loss, ruining the whole optimization in the middle. We demonstrate such failure in \cref{fig: optim_failure_for_as_offpolicy}. \ych{Perhaps we also need to copy/rephrase some content from the caption to this place to keep narrative coherence.}
+
+
+% which might lead to a large policy gradient loss if $\frac{\pi_{\theta_{\text{old}}}(\cdot\mid [x, y_{<i}]; T_i)}{\pi_{\theta_{\text{old}}}(\cdot\mid [x, y_{<i}]; T)}$ is huge. 
+% See \cref{todo} for an illustration. \ych{TODO: let's explain this more clearly in formulation}. 
+
+% Theoretically, we can fix this item by in-place  replacement of $\pi_{\theta_{\text{old}}}(\cdot\mid [x, y_{<i}]; T)$ to be $\pi_{\theta_{\text{old}}}(\cdot\mid [x, y_{<i}]; T_i)$. However, this recovers the original multinomial sampling schemes by unfairly reweighting the high-quality samples, defeating the purpose of designing more efficient RL exploration strategies.
+% While effective in correcting the bias, IS would introduce high variance and would increase the model entropy, which leads to slow convergence and suboptimal performance. In the extreme case, when the importance ratio is very large, it would ruin the whole RL train process. To address this, we would use Truncated Importance Sampling (TIS)~\citep{heckman1998matching}.\footnote{Similar techniques have been also adopted to correct floating error in verl framework~\citep{sheng2024hybridflow, yao2025offpolicy} when using vLLM~\citep{kwon2023efficient} for rollout sampling.}  Specifically, we will truncate the importance ratio up to $\epsilon=2.0$ following empirical prior study in off-policy RL~\citep{yao2025offpolicy}, as shown in \cref{eq: as_importance_sampling_correction_truncated}. \ych{leave this part for @Lin for more rigorous formulation and explanation.} 
+
+% \begin{equation}
+%     J_{\text{GRPO-AS (TIS)}}(\theta)
+% =\E_{x \sim \mathcal{D},y^{(1:G)}\overset{iid}{\sim} \mathbin{\color{red}\pi_{\theta_{\text{old, AS}}}(\cdot\mid x)}}
+% \left[\mathbin{\color{blue}\min\left(\frac{\pi_{\theta_{\text{old}}}(\cdot\mid x)}{\pi_{\theta_{\text{old, AS}}}(\cdot\mid x)}, \epsilon\right)}\frac{1}{G}\sum_{i=1}^G\frac{1}{|y^{(i)}|}\sum_{i=1}^{|y^{(i)}|}\min\left\{r_{i,t}(\theta)A_i,\mathrm{clip}\left(r_{i,t}(\theta),1-\varepsilon,1+\varepsilon\right)A_i\right\}
+% \right]
+% \label{eq: as_importance_sampling_correction_truncated}
+% \end{equation}
+
+
+
+% which we will gradually increase with the optimization step $t$. 
+% This design is to ensure we will not intervene in templated tokens generation, while ensuring a stable and smooth schedule change as the training goes on, as the off-policy effects gradually surfaces out. 
+% To see the effects of increasing $d_t$ more clearly, we can examine the average temperature $\bar{T}_{c:L}$ for subsequences $y_{c:L}$:
+% \begin{equation}
+%     \bar{T}_{c:L} = \frac{1}{L}\sum_{i=1}^L T_L = T_{min} + (T_{max}  - T_{min})\cdot(b - \frac{1-\exp((L+1)/(20d_t))}{1-\exp(0.05d_t)})
+% \end{equation}
+
+% \subsection{Global-Step-Aware Annealed Sampling for RLVR}
+% \lin{Summarize the method! I make a tentative name. Change or remove it as long as you don't like it.}
+% Based on previous observation, we introduce \emph{Global-Step-Aware Annealed Sampling}. Specifically, at global step $s$ and for token at position $t$, we adopt the sampling temperature 
+% \begin{tcolorbox}
+% \textbf{Global-Step-Aware Annealed Sampling for RLVR:}
+% \begin{align}
+%     T_t &= 
+%     \begin{cases}
+%         \max\{1 + \tau_\mathrm{max} - e^{t/d_s}, \tau_\mathrm{min}\} & t \geqslant c \\
+%         1.0 & t < c
+%     \end{cases}\\
+%     d_s &= \min(d_0 + 5s, 40000)
+% \end{align}
+% \end{tcolorbox}
+
+% \begin{tcolorbox}
+% (Optional) \textbf{Truncated Importance~Sampling (TIS):}
+% \begin{align}
+% \E_{x \sim \mathcal{D},y{\sim}{\pi^{\text{EAD}}_{\theta_{\text{old}}}(\cdot\mid x)}}
+% \left[{\color{blue}\min\left(\frac{\pi^{\text{EAD}}_{\theta_{\text{old}}}(y\mid x)}{\pi_{\theta_{\text{old}}}(y\mid x)},\varepsilon\right)}\times(\mathrm{TBD~Training~Loss})\right].
+% \end{align}
+% \end{tcolorbox}
+
+% % Briefly discuss our advantage
+% The proposed method enjoys several benefits over the existing RLVR approaches:
+% (i) It is a plug-in-and-play scheme to existing RLVR pipeline, with straightforward implementation and the same computational cost compared with standard temperature sampling. This feature distinguishes itself from other widely adopted top-p sampling \citep{Holtzman2020The} as no logits sorting process is required; (ii) The method is compatible to any subsequent optimization phase of RL algorithms. 
+
+% First, it is easy to implement and is computationally friendly. It requires only a slight modification of the per-token next token distribution, incurring similar computational costs to standard temperature sampling. Noted that its computation overhead is even less than widely adopted top-p sampling \citep{Holtzman2020The} as no logits sorting process is required. 
+% In addition, this method provides high flexibility as it can be integrated with any preferred robust RL algorithms. Since we do not alter the RL process by directly changing the training objective, any trust-region constraint such as clipping can be preserved for robust optimization.
+% Moreover, no computation budget is wasted since the inference budget is utilized effectively and no rollouts are discarded.

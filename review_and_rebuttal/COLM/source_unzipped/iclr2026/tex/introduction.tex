@@ -1,0 +1,173 @@
+\section{Introduction}
+\label{sec:introduction}
+
+% Reinforcement learning with verifiable rewards (RLVR) is a powerful paradigm for enhancing the capabilities of Large Language Models (LLMs) in domains like mathematical reasoning and code generation~\citep{openai2024learning, guo2025deepseek, team2025kimi}. In this framework, an LLM learns by iteratively generating a diverse set of potential solutions, or rollouts, and receiving feedback on its attempts. The effectiveness of this learning loop hinges on a fundamental challenge: the quality and diversity of the generated rollouts. This brings the classic reinforcement learning trade-off between exploration and exploitation to the forefront~\citep{thrun1992efficient, sutton1998reinforcement}: the model must discover novel, high-reward strategies without degrading the quality of its outputs.
+
+Reinforcement learning with verifiable rewards (RLVR) is a powerful approach to enhance the capabilities of Large Language Models (LLMs) in domains such as mathematical reasoning and code generation~\citep{openai2024learning, guo2025deepseek, team2025kimi, yang2025qwen3}. 
+In this framework, an LLM learns by iteratively generating potential solutions (i.e., rollouts), and receiving feedback on its attempts. 
+% I rewrite this sentence cuz the old one sounds awkward.
+A central challenge lies in guiding language models to explore diverse yet high-quality solutions in their vast output space~\citep{cheng2025reasoning};
+this reflects the long-standing hard trade-off between exploration and exploitation in RL~\citep{thrun1992efficient, sutton1998reinforcement}.
+% % old version
+% The effectiveness of this learning loop depends on the model's ability to explore its vast output space~\citep{cheng2025reasoning}, bringing the classic trade-off between exploration and exploitation to the forefront~\citep{thrun1992efficient, sutton1998reinforcement}.
+
+% Effective exploration can benefit from modifying the sampling process to increase the effective variance of its underlying distribution.
+% YCH: The first "Effective (exploration)" already states some "success" and it is weird to say such success "can benefit from...", also it is stylistically weak to repeat "effective" twice in such near context. 
+To achieve effective exploration, the sampling process can be modified to increase the variance of its underlying distribution.
+However, any such modification involves two fundamental challenges.
+% YCH: I feel it is not accurate to say "most obviously" and "more subtly" -- they are both "obvious" in my mind. I prefer keeping the original first...second.... to not showing our attitudes towards either of the two. 
+% Also it looks more "chatgpt-like" to use hyphens that often. I strongly neglect such style. 
+% Most obviously, it must \textbf{preserve sample quality}---diversity is meaningless if it comes at the cost of low-quality outputs.
+First, it must \textbf{preserve sample quality}. 
+Increasing diversity at the cost of generating low-quality, nonsensical outputs is counterproductive.
+% More subtly, it must \textbf{ensure training stability}---the gradient used for updating the LLM parameters will ultimately need to include a correction (an importance weighting in~\cite{degris2012off}) accounting for the gap between the behavior policy (used for sampling) and the target policy (being optimized). 
+% If this gap is large (i.e., the probability ratio is extreme), then learning becomes very unstable~\citep{schulman2017proximal}.
+Second, it must \textbf{ensure training stability}.
+Modifying the sampler creates a discrepancy between the behavior policy (used for sampling) and the target policy (being optimized), which necessitates an importance sampling (IS) correction in the gradient update~\citep{degris2012off}.
+% Accordingly, an ideal exploration method increases quality-preserving diversity while keeping the sampling distribution sufficiently close to the target policy for stable learning~\citep{ziegler2019fine}.
+If the probability ratio in the IS weight is too large, the gradients can have high variance, destabilizing the entire training process~\citep{schulman2017proximal}.
+An ideal exploration technique must therefore increase diversity while keeping the sampling distribution close enough to the target policy to allow for stable learning~\citep{haarnoja2018soft, ziegler2019fine}.
+
+% The standard method for exploration, fixed-temperature sampling~\citep{ackley1985learning}, struggles to balance these two constraints. A high temperature increases variance but often degrades sample quality and can create large IS weights, risking instability~\citep{renze-2024-effect, wang2025beyond}. A low temperature produces high-quality samples but stifles exploration, leading to premature convergence and suboptimal policies~\citep{Holtzman2020The, guo2025deepseek}. While more complex token-level methods exist~\citep{wang2025beyond, cui2025entropy}, they often add significant computational overhead.
+% A common method to encourage exploration is to increase the sampling temperature~\citep{ACKLEY1985147, hou2025t1}. However, using a \textit{fixed} temperature imposes a difficult trade-off. A high temperature promotes diversity, but it also risks producing low-quality, nonsensical text~\citep{renze-2024-effect, wang2025beyond}. Conversely, a low temperature maintains high sample quality but stifles exploration, leading to generic outputs and convergence to suboptimal solutions~\citep{Holtzman2020The, guo2025deepseek}. While more complex, token-level control methods have been proposed~\citep{wang2025beyond, cui2025entropy}, they often introduce significant computational overhead.
+
+% A common method to encourage exploration is to increase the sampling temperature~\citep{ACKLEY1985147, hou2025t1}. Its appeal is clear: the method is simple to implement, and straightforwardly increases the entropy of the sampling distribution.
+% YCH: It is not really to balance diversity-quality trade-off -- temperature sampling cannot guarantee "quality". It can only bound the KL-divergence, which is not necessarilly "quality". I think it is hard to explain this part here, so I would change back a bit to not spell such trade-off explicitly. 
+A widely adopted and principled way to this trade-off is to adjust the sampling temperature~\citep{ACKLEY1985147, hou2025t1}.
+% A widely adopted and principled way to balance response diversity and quality trade-off (for RL) is to adjust the sampling temperature~\citep{ACKLEY1985147, hou2025t1}.
+% A remarkably principled approach to this trade-off is adjusting the sampling temperature~\citep{ACKLEY1985147, hou2025t1}.
+Beyond its implementation simplicity, this method is \emph{variationally optimal}, that is, maximizing entropy (thereby increasing diversity) while bounding the KL divergence from the target policy~\citep{jaynes1957information}.
+% Beyond its simplicity in implementation, this method is \textit{variationally optimal}, as it provably maximizes sampling entropy while constraining the KL divergence from the target policy~\citep{jaynes1957information}.
+However, relying on a single fixed temperature creates a tension:
+high temperature promotes diversity but produces nonsensical text~\citep{renze-2024-effect, wang2025beyond},
+whereas low temperature improves quality but limits exploration, leading to generic and repetitive outputs~\citep{Holtzman2020The, guo2025deepseek}.
+% preserves quality but stifles 
+% This dilemma has motivated more complex, token-level control methods, but these often introduce significant computational overhead~\citep{wang2025beyond, cui2025entropy}.
+
+% In this work, we propose a strategy that elegantly addresses both challenges: \textbf{explore at the beginning, exploit at the end}. Our insight is that exploration is most impactful on early tokens, which define a rollout's semantic direction. By injecting randomness early, we generate meaningful high-level diversity. By decaying the temperature to favor high-probability tokens later, we ensure the rollout is completed coherently, thus preserving quality and keeping the overall IS weight bounded.
+
+% To implement this strategy, we introduce \textbf{\algname (\alg)}, a lightweight method that anneals the sampling temperature from high to low during generation. This dynamic approach provides robust exploration while naturally satisfying the constraints of quality and stability. To further safeguard against instability from aggressive schedules, we incorporate truncated importance sampling~\citep{heckman1998matching}, ensuring compatibility with the core RLVR pipeline without significant overhead.
+
+
+% A common method to encourage exploration is to increase the sampling temperature~\citep{ACKLEY1985147, hou2025t1}. However, using a \textit{fixed} temperature imposes a difficult trade-off. A high temperature promotes diversity and helps prevent \textit{entropy collapse}---a premature narrowing of the generation distribution~\citep{yu2025dapo, wang2025beyond}---but it also risks producing low-quality, nonsensical text~\citep{renze-2024-effect, wang2025beyond}. Conversely, a low temperature maintains high sample quality but stifles exploration, leading to generic outputs and convergence to suboptimal solutions~\citep{Holtzman2020The, guo2025deepseek}. While more complex, token-level control methods have been proposed~\citep{wang2025beyond, cui2025entropy}, they often introduce significant computational overhead.
+
+% In this work, we argue for a simpler, more effective strategy guided by a key insight into sequential generation: exploration is not equally valuable at every step. The initial tokens of a sequence largely determine its semantic direction and structure, while later tokens fill in details within that established context. This suggests an intuitive strategy: \textbf{explore at the beginning, exploit at the end}. By injecting randomness early, we encourage meaningful, high-level diversity. By reducing randomness later, we allow the model to generate coherent and high-quality completions based on the promising initial path.
+In this work, we propose \textbf{\algname (\alg)}, a strategy that improves the balance of this trade-off by leveraging a key insight into sequential generation: exploration is not equally valuable at every step.
+% In this work, we propose \textbf{\algname (\alg)}, a strategy that resolves this trade-off by leveraging a key insight into sequential generation: exploration is not equally valuable at every step.
+% \textit{exploration is not equally valuable at every step}.
+%
+The initial tokens shape a sequence's semantic direction and structure, making early exploration crucial for discovering diverse valid solutions. 
+%
+Later tokens, however, fill in details within the established context, where excessive exploration can harm coherence.
+% Later tokens, however, fill in details within the established context, where high exploration can adversely introduce incoherence.
+%
+This insight motivates our core strategy: \textit{explore at the beginning, exploit at the end}. 
+%
+This simple principle elegantly addresses the twin challenges of quality and stability. 
+%
+% \zz{Added one sentence: }
+%
+Injecting randomness early promotes diverse, high-level exploration, while reducing it later ensures completions are both coherent and close to the target policy---an essential property for stable off-policy learning.
+
+% To implement this strategy, we introduce \textbf{\algname (\alg)}, a lightweight method that anneals the sampling temperature from high to low over the course of a generation. This dynamic approach fosters robust exploration where it matters most, while preserving sample quality. However, the changing temperature makes the sampling policy non-stationary, creating an off-policy discrepancy that can destabilize training. We address this by incorporating truncated importance sampling~\citep{heckman1998matching} to correct the optimization objective, ensuring stability without altering the core RLVR pipeline.
+
+In summary, our contributions are as follows:
+\begin{enumerate}[wide, labelwidth=!, labelindent=0pt]
+    \item[\circone] We propose \alg, a simple and effective exploration strategy for RLVR that dynamically anneals temperature to encourage meaningful diversity while maintaining high sample quality.
+    %
+    \item[\circtwo] We show \alg is a plug-and-play enhancement that improves sample efficiency over temperature sampling, delivering robust gains across various RLVR algorithms including GRPO~\citep{shao2024deepseekmath}, DAPO~\citep{yu2025dapo}, and EntropyMech~\citep{cui2025entropy} on both small and larger models.
+    \item[\circthree] We show that \alg can be adapted for test-time inference, where a tuned temperature schedule further enhances generation quality.
+\end{enumerate}
+% \newpage
+
+% victor's sketch
+% In this paper we are interested in reinforcement learning on language models using verifiable rewards. In this framework, at each step the LLM generates a set of potential solutions to the given prompt, these solutions are scored, the LLM is updated based on these scores. 
+% A fundamental challenge in this setting is that this update can only be effective if at least some of the proposed solutions are actually diverse (and, in particular, at least some of the solutions are actually good). Accordingly, we would like a method to promote diversity in the generated samples. This is the topic of the present paper.
+
+% The basic goal here is to modify the proposal sampling to increase the effective variance of the distribution. There are two challenges to consider when doing this. Most obviously: we should not increase the variance at the cost of (significantly) decreasing the average model performance---we still need to get good answers! More subtly, the gradient used for updating the LLM parameters will ultimately need to include a correction (an importance weighting) accounting for the gap between the probability of the proposals under the modified distribution and the probability under the base LLM of interest. If this gap is large (i.e., the probability ratio is extreme) then learning becomes very unstable. Accordingly, we would like a variance increasing technique that will both preserve overall response quality and keep the individual token probabilities close to the base LLM itself. 
+
+% A very natural idea here is to simply increase the temperature we use to sample from the LLM \cite{TODO}. This is simple to implement, straightforwardly increases the variance, and meets the goals of staying close the original behavior of the model. However, it is not clear that it is optimal \TODO{cite something?}. In this paper we propose a simple tweak to temperature modulation that dramatically improves performance.
+
+% The idea here is to modulate the temperature over the span of the generation, so that we use a high temperature for the early tokens and a low temperature for the later ones. Intuitively, the idea here is the completion of a response is anyways strongly constrained by its beginning---the remaining variation is less likely to be semantically meaningful. Then, by imposing high variation at the early steps, we focus on variation that is more likely to be meaningful for the reinforcement learning task. Further, decaying the temperature both reduces the rate of nonsense generations (preserving average response quality) and keeps the average per-token probabilities in the nearly on-policy regime necessary for stable learning. 
+
+% In summary, the contributions of this paper are:
+% \begin{enumerate}[wide, labelwidth=!, labelindent=0pt]
+%     \item[\circone] We propose \textbf{\algname (\alg)} a simple method that uses temperature decay to increasing sampling variation while maintaining sample quality and policy closeness.
+%     \item[\circtwo] We conduct an empirical evaluation using this method as a component of reinforcement learning with verifiable rewards, and find that it significantly improves over standard temperature sampling. 
+%     \item[\circthree] Further, we show how \alg can be adapted for test-time inference, and find that this significantly improves generation quality.
+%     % \alg significantly improves sample efficiency while demonstrating robust performance that is consistent across various rollout numbers and scalable to larger models.
+%     % % We show that \alg exhibits better sample efficiency and could perform well under various rollout numbers. It also
+%     % % incentivizes the model to generate longer, more complex reasoning chains to solve difficult problems 
+%     % % scales effectively to larger models.
+%     % \item[\circthree] Moreover, \alg can be adapted for test-time inference, where a tuned temperature schedule further enhances generation quality.
+%     % % We demonstrate that, with careful tuning, Annealed Sampling can also be applied at test-time to further boost performance.
+%     % % \zz{may or may not make the deadline}
+% \end{enumerate}
+
+% \newpage
+
+
+% % LLMs iteratively generate a diverse set of potential solutions (rollouts) for a given prompt, learning to improve their reasoning by receiving feedback on these self-generated attempts.
+
+% pre-victor's version
+
+% Reinforcement learning with verifiable rewards (RLVR) is unlocking new frontiers in mathematical reasoning and code generation for Large Language Models (LLMs)~\citep{openai2024learning, guo2025deepseek, team2025kimi}. 
+% %
+% In this framework, LLMs iteratively generate a diverse set of potential solutions (rollouts) for a given prompt, learning to improve their reasoning by receiving feedback on these self-generated attempts.
+% %
+% This dynamic of self-generation and refinement is fundamentally a process of learning from experience~\citep{silver2025welcome}, compelling the model to confront the classic -- and notoriously difficult -- RL trade-off between discovering novel strategies (i.e., \textit{Exploration}) and perfecting known successful ones (i.e., \textit{Exploitation})~\citep{thrun1992efficient, sutton1998reinforcement}.
+
+% % Previous works have proposed various methods to address this issue~\citep{hou2025t1, cheng2025reasoning, wang2025beyond, cui2025entropy, chen2025pass, deng2025trial}, including upsampling and filtering rollouts~\citep{hou2025t1, yu2025dapo}, incorporating entropy in optimization~\citep{agarwal2025unreasonable, cheng2025reasoning} and replacing pass@1 reward with pass@k reward~\citep{chen2025pass}. More recently, a focus has been shifted to a fine-grained control over token-level optimization under per-token entropy dynamic~\citep{wang2025beyond, cui2025entropy}. In particular, \citet{wang2025beyond} finds high-entropy tokens works as ``forking tokens'' and concentrate optimization on such tokens would yield significant performance gain.\footnote{Such findings has been further reinforced and utilized to improve test-time performance~\citep{fu2025deep}.} \citet{cui2025entropy} points out the brittleness of directly controlling token-level entropy. Instead, they analyze the entropy dynamics and find that the entropy changes could be approximated by probability-advantage covariance, and propose to clip high-covariance tokens in optimization. While effective, these previous methods typically require either offline sampling to estimate relevant statistics (e.g., entropy percentile) or complicated covariance statistics computation and collection on the fly, incurring significant computation overhead or additional stages in RL training. 
+
+% Previous work has sought to manage this trade-off with various techniques, such as upsampling rollouts~\citep{hou2025t1}, filtering out uninformative prompts~\citep{yu2025dapo}, incorporating entropy regularization in the optimization objective~\citep{agarwal2025unreasonable, cheng2025reasoning}, using tree-search in rollout sampling~\citep{li2025treepo}, and replacing pass@1 with pass@k rewards~\citep{chen2025pass}.
+% %
+% Building on these ideas, recent efforts have shifted towards more fine-grained, token-level control of the exploration process~\citep{wang2025beyond, cui2025entropy}.
+% %
+% For instance, \citet{wang2025beyond} identify high-entropy tokens as ``forking points'' and show that concentrating optimization on them yields significant gains.\footnote{This finding has been reinforced and leveraged to improve test-time performance~\citep{fu2025deep}.}
+% %
+% Recognizing the brittleness of direct entropy control, \citet{cui2025entropy} instead proposes clipping tokens with high probability-advantage covariance---an approximation for future entropy change---during optimization.
+% %
+% While effective, these token-level methods often introduce considerable complexity, requiring either offline sampling to estimate statistics or on-the-fly computation of complex covariance metrics, thereby incurring significant overhead.
+% %
+
+
+% % We argue that such complicated fine-grained control is not necessary by taking into account of \textit{LLM probability concentration}: LLM output distribution for given prompt would naturally concentrate on fewer and fewer tokens as generation progresses, leading to a sharper, low-entropy distribution~\citep{yang2025alignment}. Branching out at a later position could risk introducing very low-probability low-quality samples and hurt the performance~\citep{liao2025lost, yang2025alignment, fu2025deep}. Though these findings are established in inference-time policy evaluation, we hypothesize that this also holds for RL training, considering that the strong connection for Base Models and models after RLVR tuning~\citep{yue2025does, zhao2025echo}, and propose a much simpler yet effective RLVR exploration strategy: \textit{Explore at the beginning, but exploit at the end}. 
+
+% In this work, we propose an alternative perspective, suggesting that such intricate control mechanisms may be unnecessarily complicated.
+% %
+% Our approach is grounded in the phenomenon of \textit{LLM probability concentration}, where the next-token distribution naturally sharpens onto a few candidates as generation progresses~\citep{yang2025alignment}.
+% %
+% This implies that forcing exploration late in the sequence not only conflicts with the model's natural dynamics, but also risks injecting low-probability, low-quality rollouts that degrade performance~\citep{liao2025lost, yang2025alignment, fu2025deep}.
+% % Consequently, forcing exploration late in the generation process risks introducing low-probability low-quality rollouts and degrading performance~\citep{liao2025lost, yang2025alignment, fu2025deep}. 
+% % \ych{improve the transition}
+% Although these observations stem from inference-time analysis, the well-documented continuity between base and RL-tuned models~\citep{yue2025does, zhao2025echo} suggests that the same principle governs the dynamics of RLVR training as well.
+% %
+% Taken together, these insights motivate a much simpler yet effective strategy: \textit{explore at the beginning, exploit at the end}.
+% %
+% % This leads us to a much simpler, yet effective, exploration strategy: \textit{Explore at the beginning, but exploit at the end}.
+
+
+% % Inspired by the idea of simulated annealing~\citep{kirkpatrick1983optimization, bertsimas1993simulated}, we implement this strategy by \textbf{Annealed Sampling}: rollout sampling starts with a high-temperature at the beginning, but gradually ``cooling down'' towards the end. While surpassing normal multinomial sampling at the beginning, this approach essentially make the current RLVR algorithm off-policy and could make optimization unstable in the middle. We further adapt truncated importance sampling~\citep{heckman1998matching} and behavior policy search~\citep{hanna2017data} to mitigate this issue and finally our proposed method yields significant performance improvement , does not introduce significant computational overhead, and stay compatible with most existing RLVR algorithms as we do not change the optimization objective or data filtering process. 
+% To realize this strategy, we introduce \textbf{\algname (\alg)}, a method inspired by the principles of simulated annealing~\citep{kirkpatrick1983optimization, bertsimas1993simulated}.
+% %
+% This technique begins rollout sampling with a high temperature to encourage diversity and gradually cools down to a low temperature to favor high-probability tokens.
+% %
+% However, this temperature schedule renders the learning process off-policy, which can lead to optimization instability.
+% %
+% We mitigate this issue by adapting truncated importance sampling~\citep{heckman1998matching} and behavior policy search~\citep{hanna2017data}.
+% %
+% The resulting method yields significant performance improvements without introducing substantial computational overhead or altering the core optimization objective and data processing pipeline, ensuring broad compatibility with existing RLVR algorithms.
+% %
+
+% % Empirical experiments demonstrate that our proposed method stays superior compared to normal multinomial sampling during the training process, mitigate entropy collapse problems, incentivize the model to use longer reasoning chains to solve complex problems, and can scale well to larger model training. Also, when tuned carefully, our \textbf{Annealed Sampling} method can also improve test-time performance. 
+% In summary, our contributions are as follows:
+% \begin{enumerate}[wide, labelwidth=!, labelindent=0pt]
+%     \item[\circone] We propose \textbf{\algname (\alg)}, a lightweight yet effective exploration strategy for RLVR that outperforms standard temperature sampling while mitigating entropy collapse.
+%     \item[\circtwo] \alg significantly improves sample efficiency while demonstrating robust performance that is consistent across various rollout numbers and scalable to larger models.
+%     % We show that \alg exhibits better sample efficiency and could perform well under various rollout numbers. It also
+%     % incentivizes the model to generate longer, more complex reasoning chains to solve difficult problems 
+%     % scales effectively to larger models.
+%     \item[\circthree] Moreover, \alg can be adapted for test-time inference, where a tuned temperature schedule further enhances generation quality.
+%     % We demonstrate that, with careful tuning, Annealed Sampling can also be applied at test-time to further boost performance.
+%     % \zz{may or may not make the deadline}
+% \end{enumerate}
