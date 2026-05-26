@@ -1,0 +1,225 @@
+"""
+Inference-only evaluation of EAD vs. fixed-temperature sampling on code
+benchmarks. No RL training, no Docker, no firejail.
+
+Loads the prepared parquet (HumanEval+ or LiveCodeBench format), generates K
+samples per prompt with vLLM, scores each sample through the same reward
+modules that verl uses during training, and reports pass@1 / pass@K (mean over
+prompts) and worst@K (worst-of-K success fraction per prompt).
+
+Two sampling regimes are supported:
+  --mode fixed   : standard temperature sampling (--temperature T)
+  --mode ead     : Exploratory Annealed Decoding via vLLM LogitsProcessor
+                   with the same negexp schedule used in the paper.
+
+Example:
+    python recipe/annealed_sampling/codeRL/inference_only_eval.py \\
+        --model_name_or_path Qwen/Qwen2.5-Coder-1.5B-Instruct \\
+        --eval_parquet ./data/humanevalplus/test.parquet \\
+        --mode fixed --temperature 1.0 --n_samples 8
+
+    python recipe/annealed_sampling/codeRL/inference_only_eval.py \\
+        --model_name_or_path Qwen/Qwen2.5-Coder-1.5B-Instruct \\
+        --eval_parquet ./data/livecodebench/release_v2_test.parquet \\
+        --mode ead --start_temp 1.2 --end_temp 0.1 --decay_freq 200 \\
+        --n_samples 8
+"""
+
+import argparse
+import json
+import os
+import time
+from typing import List
+
+import datasets
+
+from verl.utils.reward_score import default_compute_score
+from verl.workers.rollout.vllm_rollout.annealed_sampling import (
+    AnnealedSamplingProcessor,
+)
+
+
+def _build_prompts(rows, tokenizer) -> List[str]:
+    """Apply the model's chat template to each row's prompt field."""
+    out = []
+    for row in rows:
+        msgs = list(row["prompt"])
+        try:
+            text = tokenizer.apply_chat_template(
+                msgs, tokenize=False, add_generation_prompt=True,
+            )
+        except Exception:
+            text = "\n".join(m.get("content", "") for m in msgs)
+        out.append(text)
+    return out
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_name_or_path", required=True)
+    parser.add_argument("--eval_parquet", required=True)
+    parser.add_argument("--output_dir", default="./logs/inference_only_eval")
+    parser.add_argument("--mode", choices=["fixed", "ead"], default="fixed")
+    parser.add_argument("--temperature", type=float, default=1.0)
+    parser.add_argument("--top_p", type=float, default=1.0)
+    parser.add_argument("--n_samples", type=int, default=8)
+    parser.add_argument("--max_tokens", type=int, default=2048)
+    parser.add_argument("--max_prompts", type=int, default=-1)
+    parser.add_argument("--seed", type=int, default=0)
+    # EAD-specific
+    parser.add_argument("--start_temp", type=float, default=1.2)
+    parser.add_argument("--end_temp", type=float, default=0.1)
+    parser.add_argument("--decay_freq", type=int, default=200)
+    parser.add_argument("--warmup_period", type=int, default=10)
+    parser.add_argument("--decay_mode", default="negexp")
+    parser.add_argument("--decay_freq_cap_large", type=int, default=40000)
+    parser.add_argument("--decay_freq_increase_factor", type=int, default=5)
+    parser.add_argument("--global_step", type=int, default=0,
+                        help="Used only by the EAD schedule (0 for inference-only).")
+    # vLLM scaffolding
+    parser.add_argument("--tensor_parallel_size", type=int, default=1)
+    parser.add_argument("--gpu_memory_utilization", type=float, default=0.85)
+    args = parser.parse_args()
+
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    from vllm import LLM, SamplingParams
+    from transformers import AutoTokenizer
+
+    os.environ.setdefault("VLLM_USE_V1", "1")
+
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, trust_remote_code=True)
+    ds = datasets.Dataset.from_parquet(args.eval_parquet)
+    rows = list(ds)
+    if args.max_prompts > 0:
+        rows = rows[: args.max_prompts]
+
+    prompts = _build_prompts(rows, tokenizer)
+    print(f"Loaded {len(rows)} prompts from {args.eval_parquet}", flush=True)
+
+    llm_kwargs = dict(
+        model=args.model_name_or_path,
+        tensor_parallel_size=args.tensor_parallel_size,
+        gpu_memory_utilization=args.gpu_memory_utilization,
+        trust_remote_code=True,
+    )
+    if args.mode == "ead":
+        # Per-request LogitsProcessor; the vLLM v1 wrapper picks it up from
+        # SamplingParams.extra_args (see WrapperAdapterLogitsProcessor).
+        from verl.workers.rollout.vllm_rollout.annealed_sampling import (
+            WrapperAdapterLogitsProcessor,
+        )
+        llm_kwargs["logits_processors"] = [WrapperAdapterLogitsProcessor]
+
+    print("Spinning up vLLM ...", flush=True)
+    llm = LLM(**llm_kwargs)
+
+    if args.mode == "fixed":
+        sampling_params = SamplingParams(
+            n=args.n_samples,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            max_tokens=args.max_tokens,
+            seed=args.seed,
+        )
+    else:
+        sampling_params = SamplingParams(
+            n=args.n_samples,
+            temperature=1.0,  # base T; the logits proc rescales every step
+            top_p=args.top_p,
+            max_tokens=args.max_tokens,
+            seed=args.seed,
+            extra_args={
+                "exploration_temp": args.start_temp,
+                "stability_temp": args.end_temp,
+                "decay_freq": args.decay_freq,
+                "global_step": args.global_step,
+                "decay_mode": args.decay_mode,
+                "warmup_period": args.warmup_period,
+                "decay_freq_increase_factor": args.decay_freq_increase_factor,
+                "decay_freq_cap_large": args.decay_freq_cap_large,
+            },
+        )
+
+    print(f"Generating with mode={args.mode} ...", flush=True)
+    t0 = time.time()
+    outs = llm.generate(prompts, sampling_params)
+    print(f"Generation done in {time.time() - t0:.1f}s", flush=True)
+
+    # Score each sample.
+    pass_at_1 = 0.0
+    pass_at_k = 0.0
+    worst_at_k = 0.0
+    per_prompt = []
+    for row, out in zip(rows, outs):
+        data_source = row["data_source"]
+        ground_truth = row["reward_model"]["ground_truth"]
+        successes = []
+        for completion in out.outputs:
+            text = completion.text
+            try:
+                res = default_compute_score(data_source, text, ground_truth)
+            except Exception as e:  # noqa: BLE001
+                res = {"score": 0.0, "error": str(e)}
+            if isinstance(res, dict):
+                score = float(res.get("score", 0.0))
+            else:
+                score = float(res)
+            successes.append(score)
+        n_ok = sum(1 for s in successes if s >= 0.999)
+        any_ok = 1.0 if n_ok > 0 else 0.0
+        all_ok = 1.0 if n_ok == len(successes) else 0.0
+        first_ok = 1.0 if successes and successes[0] >= 0.999 else 0.0
+        pass_at_1 += first_ok
+        pass_at_k += any_ok
+        worst_at_k += all_ok
+        per_prompt.append({
+            "task_id": row.get("extra_info", {}).get("task_id"),
+            "successes": successes,
+            "pass@1": first_ok,
+            "pass@k": any_ok,
+            "worst@k": all_ok,
+        })
+
+    n = len(rows)
+    summary = {
+        "model": args.model_name_or_path,
+        "eval_parquet": args.eval_parquet,
+        "mode": args.mode,
+        "n_samples_per_prompt": args.n_samples,
+        "num_prompts": n,
+        "pass@1": pass_at_1 / max(n, 1),
+        f"pass@{args.n_samples}": pass_at_k / max(n, 1),
+        f"worst@{args.n_samples}": worst_at_k / max(n, 1),
+        "config": {
+            "temperature": args.temperature,
+            "start_temp": args.start_temp,
+            "end_temp": args.end_temp,
+            "decay_freq": args.decay_freq,
+            "decay_mode": args.decay_mode,
+            "decay_freq_cap_large": args.decay_freq_cap_large,
+            "decay_freq_increase_factor": args.decay_freq_increase_factor,
+            "warmup_period": args.warmup_period,
+        },
+    }
+
+    out_tag = (
+        os.path.basename(args.eval_parquet).replace(".parquet", "")
+        + f"__{args.mode}"
+        + (f"__T{args.temperature}" if args.mode == "fixed"
+           else f"__neg_{args.start_temp}_{args.end_temp}_d{args.decay_freq}")
+    )
+    summary_path = os.path.join(args.output_dir, f"summary__{out_tag}.json")
+    per_prompt_path = os.path.join(args.output_dir, f"per_prompt__{out_tag}.jsonl")
+    with open(summary_path, "w") as f:
+        json.dump(summary, f, indent=2)
+    with open(per_prompt_path, "w") as f:
+        for r in per_prompt:
+            f.write(json.dumps(r) + "\n")
+    print(json.dumps(summary, indent=2))
+    print(f"Wrote {summary_path}")
+    print(f"Wrote {per_prompt_path}")
+
+
+if __name__ == "__main__":
+    main()

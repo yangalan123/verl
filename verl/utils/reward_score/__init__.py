@@ -88,6 +88,14 @@ def default_compute_score(
 
             # Assuming prime_code doesn't need the URL
             res = prime_code.compute_score(solution_str, ground_truth, continuous=True)
+    elif data_source in ["humanevalplus", "mbppplus"]:
+        # Function-style code reward. The ground_truth is a JSON-encoded dict
+        # {"entry_point": ..., "tests": ..., "prompt_header": ...}. Candidates
+        # are executed in a forked subprocess with a SIGALRM timeout -- no
+        # Docker / firejail required.
+        from . import humanevalplus
+
+        res = humanevalplus.compute_score(solution_str, ground_truth)
     elif data_source in ["hiyouga/geometry3k"]:
         from . import geo3k
 

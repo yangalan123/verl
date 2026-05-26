@@ -308,6 +308,36 @@ def annealed_sampling_processor(token_ids: Union[list[int], tuple[int]], logits:
         # the temperature gradually increases from stability_temp to exploration_temp
         current_temp = stability_temp + (exploration_temp - stability_temp) * np.exp(-global_step / decay_freq)
         current_temp = max(current_temp, 0.1)
+    # ===== BEGIN COLM REBUTTAL EDIT: schedule-shape ablation =====
+    # Three additional schedules used in the schedule-shape ablation
+    # (Section "Schedule-shape ablation" in the appendix). All three take the
+    # same (tau_max, tau_min, d_0, alpha, d_max) parameters as `negexp`, so the
+    # comparison only varies the shape of tau(t).
+    elif decay_mode == "linear":
+        # Linear decay over an effective window L = 20 * d_s tokens.
+        _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, decay_freq_cap_large)
+        L = max(20 * _decay_freq, 1)
+        frac = min(len(token_ids) / L, 1.0)
+        current_temp = exploration_temp + (stability_temp - exploration_temp) * frac
+        current_temp = max(current_temp, stability_temp)
+    elif decay_mode == "two_stage":
+        # Hard switch at the midpoint of the effective window.
+        _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, decay_freq_cap_large)
+        L = max(20 * _decay_freq, 1)
+        if len(token_ids) < L / 2:
+            current_temp = exploration_temp
+        else:
+            current_temp = stability_temp
+    elif decay_mode == "mean_matched":
+        # Time-average of the negexp schedule on [0, L]: a fixed temperature
+        # whose total entropy budget matches `negexp`. Useful as an
+        # entropy-matched fixed-temperature control.
+        _decay_freq = min(decay_freq + decay_freq_increase_factor * global_step, decay_freq_cap_large)
+        L = max(20 * _decay_freq, 1)
+        # closed-form mean of 1 + tau_max - exp(t/L) on t in [0, L]
+        avg_negexp = 1.0 + exploration_temp - (np.e - 1.0)
+        current_temp = max(avg_negexp, stability_temp)
+    # ===== END COLM REBUTTAL EDIT =====
     elif decay_mode == 'adaptive':
         # New adaptive decay mode based on historical performance
         if adaptive_decay and uid is not None:
