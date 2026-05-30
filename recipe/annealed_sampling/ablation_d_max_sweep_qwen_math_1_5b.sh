@@ -39,10 +39,21 @@ decay_freq_increase_factor=5
 # Set to -1 to fall back to a full epoch.
 TOTAL_TRAINING_STEPS="${TOTAL_TRAINING_STEPS:-100}"
 
+# Which d_max values to sweep.
+# NOTE: the decay rate grows as d_s = min(d_0 + alpha*s, d_max). Within a short
+# run, s only reaches TOTAL_TRAINING_STEPS, so d_s tops out at
+# (d_0 + alpha*TOTAL_TRAINING_STEPS) = (200 + 5*100) = 700 by default. Any
+# d_max >= ~700 is therefore NEVER reached and all such caps behave identically.
+# So for the default 100-step run we sweep small caps that actually clamp the
+# schedule, plus one large "effectively uncapped" reference (40000, the paper
+# default). If you raise TOTAL_TRAINING_STEPS to a full epoch, switch DMAX_VALUES
+# back to a wide range like "200 1000 5000 40000 200000".
+DMAX_VALUES="${DMAX_VALUES:-200 300 500 40000}"
+
 train_files="['${DATA_ROOT}/numina_math/train.parquet']"
 val_files="['${DATA_ROOT}/math500/test.parquet']"
 
-for D_MAX in 200 1000 5000 40000 200000; do
+for D_MAX in ${DMAX_VALUES}; do
     experiment_name="ead_negexp_explore_${start_temp}_stable_${end_temp}_d0_${decay_freq}_alpha_${decay_freq_increase_factor}_dmax_${D_MAX}"
     log_dir="${ROOT_DIR}/logs/${project_name}/${experiment_name}"
     mkdir -p "${log_dir}"

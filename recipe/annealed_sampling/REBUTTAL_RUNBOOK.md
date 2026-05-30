@@ -246,12 +246,22 @@ N_SAMPLES=8 MODEL=${MODEL} bash recipe/annealed_sampling/codeRL/step2_eval_infer
 Both scripts run a *sequential* sweep over hyperparameter / decay-mode values. **Ablations are capped at 100 training steps by default** (`TOTAL_TRAINING_STEPS=100`) -- enough to reveal the relative ordering of configs without training to convergence, which is all an ablation needs. At ~100 steps each run is roughly 1-2 h instead of ~10 h. The scripts are written so you can comment out values you don't need.
 
 ```bash
-# d_max sweep: 200, 1000, 5000, 40000, 200000 (the paper uses 40000)
+# d_max sweep. Default DMAX_VALUES="200 300 500 40000" -- tuned for the 100-step
+# cap: within 100 steps the decay rate only grows to d_s = d_0 + alpha*100 = 700,
+# so any d_max >= ~700 behaves identically. We therefore sweep small caps that
+# actually clamp the schedule plus one large "uncapped" reference (40000).
 bash recipe/annealed_sampling/ablation_d_max_sweep_qwen_math_1_5b.sh
 
 # schedule shapes: negexp, linear, two_stage, mean_matched
 bash recipe/annealed_sampling/ablation_schedule_shapes_qwen_math_1_5b.sh
 ```
+
+> If you want the paper's *wide* d_max robustness sweep (200 ... 200000), it only
+> becomes meaningful with many more steps. Run that one at full length:
+> ```bash
+> TOTAL_TRAINING_STEPS=-1 DMAX_VALUES="200 1000 5000 40000 200000" \
+>   bash recipe/annealed_sampling/ablation_d_max_sweep_qwen_math_1_5b.sh
+> ```
 
 To change the cap (e.g. a longer 200-step run, or a full epoch):
 
