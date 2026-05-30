@@ -273,6 +273,15 @@ print(pd.DataFrame(rows).sort_values(["bench", "mode", "T"]).to_markdown(index=F
   ```bash
   export TOKENIZERS_PARALLELISM=false
   ```
+* **`OSError: [Errno 16] Device or resource busy: '.nfsXXXX'`** during HumanEval+ scoring -- triggered by NFS silly-rename on the `multiprocessing.Manager()` socket when `$TMPDIR` is NFS-backed. The reward module (`verl/utils/reward_score/humanevalplus.py`) now avoids `Manager()` and routes scratch directories to a known-local root (`/dev/shm` -> `/tmp` -> `/var/tmp`). If your cluster has a different local scratch path, override it with:
+  ```bash
+  export HUMANEVALPLUS_TMPDIR=/path/to/local/scratch
+  ```
+  As a one-line quick fix without code changes you can also just point all of `$TMPDIR` at a local disk:
+  ```bash
+  export TMPDIR=/tmp     # or /dev/shm
+  ```
+  Note: the traceback usually appears at interpreter exit, *after* the eval has already finished computing and written its summary JSON, so your scores were probably correct -- check `logs/.../summary__*.json` before re-running.
 * **HumanEval+ scores 0% across the board** -- almost always a reward-path bug, not the model. Published Qwen2.5-Coder-1.5B-Instruct hits ~64% Pass@1, so a clean 0/164 means the candidate never reached the `check(...)` harness. Run the diagnostic:
   ```bash
   python recipe/annealed_sampling/codeRL/diagnose_humanevalplus.py \

@@ -29,45 +29,92 @@ import json
 import multiprocessing
 import os
 import platform
+import queue as _queue_mod
 import signal
 import tempfile
 
 
-def _unsafe_execute(check_program: str, result, timeout: float):
-    with _create_tempdir():
-        # tweak the runtime so the candidate can't trivially DoS us
-        import builtins
-        rmtree = __import__("shutil").rmtree
-        rmdir = os.rmdir
-        chdir = os.chdir
-        try:
-            with _swallow_io():
-                with _time_limit(timeout):
-                    exec_globals = {}
-                    exec(check_program, exec_globals)
-            result.append("passed")
-        except TimeoutException:
-            result.append("timed out")
-        except BaseException as e:  # noqa: BLE001
-            result.append(f"failed: {type(e).__name__}: {e}")
-        # restore tampered builtins / fs ops
-        __import__("shutil").rmtree = rmtree
-        os.rmdir = rmdir
-        os.chdir = chdir
+# NFS-safe scratch root. multiprocessing.Manager() (and tempfile.TemporaryDirectory)
+# default to tempfile.gettempdir(), which on shared clusters is often NFS-backed.
+# On NFS, the Manager socket gets silly-renamed to '.nfs...' on cleanup and the
+# finalizer raises `OSError: [Errno 16] Device or resource busy: '.nfsXXXX'` at
+# interpreter shutdown. We avoid Manager entirely (using a Queue instead, which
+# uses anonymous pipes), and we route TemporaryDirectory at a known-local path.
+_DEFAULT_LOCAL_TMP_CANDIDATES = ["/dev/shm", "/tmp", "/var/tmp"]
+
+
+def _pick_local_tmp() -> str:
+    """Pick a non-NFS-backed scratch root for tempfile.TemporaryDirectory.
+
+    Priority: $HUMANEVALPLUS_TMPDIR > $TMPDIR (if it looks local) > /dev/shm > /tmp.
+    Falls back to tempfile.gettempdir() if none of the candidates are writable.
+    """
+    override = os.environ.get("HUMANEVALPLUS_TMPDIR")
+    if override and os.path.isdir(override) and os.access(override, os.W_OK):
+        return override
+    for cand in _DEFAULT_LOCAL_TMP_CANDIDATES:
+        if os.path.isdir(cand) and os.access(cand, os.W_OK):
+            return cand
+    return tempfile.gettempdir()
+
+
+def _unsafe_execute(check_program: str, result_q, timeout: float):
+    """Run `check_program` and push the resulting status string onto `result_q`."""
+    try:
+        with _create_tempdir():
+            # tweak the runtime so the candidate can't trivially DoS us
+            rmtree = __import__("shutil").rmtree
+            rmdir = os.rmdir
+            chdir = os.chdir
+            try:
+                with _swallow_io():
+                    with _time_limit(timeout):
+                        exec_globals = {}
+                        exec(check_program, exec_globals)
+                status = "passed"
+            except TimeoutException:
+                status = "timed out"
+            except BaseException as e:  # noqa: BLE001
+                status = f"failed: {type(e).__name__}: {e}"
+            # restore tampered builtins / fs ops
+            __import__("shutil").rmtree = rmtree
+            os.rmdir = rmdir
+            os.chdir = chdir
+    except BaseException as e:  # noqa: BLE001
+        status = f"harness_error: {type(e).__name__}: {e}"
+    try:
+        result_q.put(status)
+    except Exception:
+        # Parent already gave up on us; nothing we can do.
+        pass
 
 
 def _check_correctness(check_program: str, timeout: float):
-    """Run the test program in a forked subprocess with SIGALRM."""
-    manager = multiprocessing.Manager()
-    result = manager.list()
-    p = multiprocessing.Process(target=_unsafe_execute, args=(check_program, result, timeout))
+    """Run the test program in a separate process with a SIGALRM timeout.
+
+    Uses a `multiprocessing.Queue` (anonymous pipes, no on-disk artefacts) so
+    this works on NFS-only $TMPDIR clusters.
+    """
+    ctx = multiprocessing.get_context("fork") if hasattr(os, "fork") \
+        else multiprocessing.get_context()
+    q = ctx.Queue()
+    p = ctx.Process(target=_unsafe_execute, args=(check_program, q, timeout))
     p.start()
     p.join(timeout=timeout + 2)
     if p.is_alive():
         p.kill()
-    if not result:
-        result.append("timed out")
-    return result[0]
+        p.join()
+    try:
+        status = q.get_nowait()
+    except _queue_mod.Empty:
+        status = "timed out"
+    # Drain & close so the pipe isn't held open into the next call.
+    try:
+        q.close()
+        q.join_thread()
+    except Exception:
+        pass
+    return status
 
 
 class TimeoutException(Exception):
@@ -97,7 +144,9 @@ def _swallow_io():
 
 @contextlib.contextmanager
 def _create_tempdir():
-    with tempfile.TemporaryDirectory() as d:
+    """Cd into a scratch dir under a non-NFS root to avoid '.nfs*' cleanup errors."""
+    root = _pick_local_tmp()
+    with tempfile.TemporaryDirectory(dir=root) as d:
         cwd = os.getcwd()
         os.chdir(d)
         try:
