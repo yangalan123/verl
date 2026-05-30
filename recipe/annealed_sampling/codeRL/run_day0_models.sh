@@ -51,7 +51,7 @@
 set -euo pipefail
 
 WORKER="recipe/annealed_sampling/codeRL/eval_grid_worker.sh"
-LOG_ROOT="${LOG_ROOT:-./logs/inference_only_eval/_worker_logs}"
+LOG_ROOT="${LOG_ROOT:-./logs/inference_only_eval_samples32/_worker_logs}"
 mkdir -p "${LOG_ROOT}"
 
 MODELS_FILTER="${MODELS_FILTER:-}"

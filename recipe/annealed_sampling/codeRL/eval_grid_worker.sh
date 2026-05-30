@@ -50,8 +50,8 @@ MODEL="${MODEL:-Qwen/Qwen2.5-Coder-1.5B-Instruct}"
 DATA_ROOT="${DATA_ROOT:-./data}"
 # Base output dir (per model). Each benchmark gets its own subdir below, so
 # HumanEval+ and LiveCodeBench summaries never share a folder.
-OUT_DIR_BASE="${OUT_DIR:-./logs/inference_only_eval/$(basename ${MODEL})}"
-N_SAMPLES="${N_SAMPLES:-8}"
+OUT_DIR_BASE="${OUT_DIR:-./logs/inference_only_eval_sample32/$(basename ${MODEL})}"
+N_SAMPLES="${N_SAMPLES:-32}"
 MAX_PROMPTS="${MAX_PROMPTS:--1}"
 LCB_VERSION="${LCB_VERSION:-release_v2}"
 GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.85}"

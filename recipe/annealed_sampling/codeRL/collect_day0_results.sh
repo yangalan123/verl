@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-ROOT="${ROOT:-./logs/inference_only_eval}"
+ROOT="${ROOT:-./logs/inference_only_eval_sample32}"
 OUT="${OUT:-./logs/day0_tables}"
 PY="recipe/annealed_sampling/codeRL/aggregate_day0_results.py"
 
