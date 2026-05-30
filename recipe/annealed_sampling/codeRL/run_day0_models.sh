@@ -16,18 +16,20 @@
 #   MODELS_FILTER="Qwen3-4B" MAX_PROMPTS=40 N_SAMPLES=4 \
 #       bash recipe/annealed_sampling/codeRL/run_day0_models.sh
 #
-#   # ONE dedicated session per model, each pinned to its own GPU:
-#   #   session 1:  GPUS=0 MODELS_FILTER=Qwen2.5-Coder-1.5B bash ...run_day0_models.sh
-#   #   session 2:  GPUS=1 MODELS_FILTER=Qwen2.5-Coder-7B   bash ...run_day0_models.sh
-#   #   session 3:  GPUS=2 MODELS_FILTER=Qwen3-4B           bash ...run_day0_models.sh
-#   #   session 4:  GPUS=3 MODELS_FILTER=Qwen3-8B           bash ...run_day0_models.sh
+#   # ONE dedicated session per (benchmark, mode) TASK, each pinned to its
+#   # own GPU; every session iterates over ALL registry models:
+#   #   session 1:  GPUS=0 TASK_FILTER="humanevalplus fixed" bash ...run_day0_models.sh
+#   #   session 2:  GPUS=1 TASK_FILTER="humanevalplus ead"   bash ...run_day0_models.sh
+#   #   session 3:  GPUS=2 TASK_FILTER="livecodebench fixed" bash ...run_day0_models.sh
+#   #   session 4:  GPUS=3 TASK_FILTER="livecodebench ead"   bash ...run_day0_models.sh
+#   # (alternatively, dedicate a session per MODEL with MODELS_FILTER instead.)
 #   # a TP>1 (MoE) model needs >=TP GPUs, e.g.:
 #   #   GPUS="0,1" MODELS_FILTER=Qwen3-Coder-30B bash ...run_day0_models.sh
 #
-# Models run SEQUENTIALLY (one at a time). Within each model, the 4 (benchmark,
-# mode) tasks are scheduled onto the GPUs in $GPUS: for TP=1 models, up to
-# N=|GPUS| tasks run in parallel (one per GPU, in waves); for TP>1 models the
-# tasks run sequentially on the first TP GPUs in $GPUS.
+# Models run SEQUENTIALLY (one at a time). Within each model, the selected
+# (benchmark, mode) tasks are scheduled onto the GPUs in $GPUS: for TP=1
+# models, up to N=|GPUS| tasks run in parallel (one per GPU, in waves); for
+# TP>1 models the tasks run sequentially on the first TP GPUs in $GPUS.
 #
 # Registry row format (pipe-separated):
 #   MODEL_ID | MAX_TOKENS | ENABLE_THINKING(auto|on|off) | TP | MAX_MODEL_LEN
@@ -36,9 +38,15 @@
 #   DATA_ROOT, OUT_DIR, N_SAMPLES, MAX_PROMPTS, LCB_VERSION, GPU_MEM_UTIL,
 #   FIXED_TEMPS, DECAY_FREQS, START_TEMP, END_TEMP.
 #   MODELS_FILTER : substring; only run registry rows whose MODEL_ID matches.
+#   TASK_FILTER   : substring matched against each "<benchmark> <mode>" task;
+#                   only matching tasks run. Examples:
+#                     "humanevalplus fixed" -> just that one cell
+#                     "ead"                 -> both EAD tasks (hep + lcb)
+#                     "livecodebench"       -> both LCB tasks (fixed + ead)
+#                   Default empty = all four tasks.
 #   GPUS          : GPU ids this invocation may use (comma- OR space-separated).
-#                   Default "0 1 2 3". Set to a single id (e.g. GPUS=2) to give
-#                   one model its own dedicated session/GPU.
+#                   Default "0 1 2 3". Set to a single id (e.g. GPUS=2) to pin
+#                   one task (or one model) to its own dedicated session/GPU.
 
 set -euo pipefail
 
@@ -77,6 +85,25 @@ TASKS=(
     "livecodebench fixed"
     "livecodebench ead"
 )
+
+# Optionally restrict to a subset of tasks (e.g. one (benchmark, mode) per
+# session). Substring match against each "<benchmark> <mode>" string.
+TASK_FILTER="${TASK_FILTER:-}"
+if [ -n "${TASK_FILTER}" ]; then
+    _filtered=()
+    for t in "${TASKS[@]}"; do
+        if [[ "${t}" == *"${TASK_FILTER}"* ]]; then
+            _filtered+=("${t}")
+        fi
+    done
+    if [ "${#_filtered[@]}" -eq 0 ]; then
+        echo "No tasks match TASK_FILTER='${TASK_FILTER}'. Available tasks:" >&2
+        for t in "${TASKS[@]}"; do echo "  - ${t}" >&2; done
+        exit 1
+    fi
+    TASKS=("${_filtered[@]}")
+fi
+echo "[day0] tasks: ${TASKS[*]}"
 
 run_model() {
     local model="$1" max_tokens="$2" think="$3" tp="$4" max_model_len="$5"
