@@ -95,6 +95,20 @@ def main():
         help="vLLM context window. -1 lets vLLM use the model default; set "
              "explicitly for long-reasoning models to bound KV-cache memory.",
     )
+    parser.add_argument(
+        "--save_completions", action="store_true",
+        help="Persist ALL completion texts (not just the first) to the "
+             "per_prompt JSONL so they can be re-scored later under a different "
+             "reward/extraction. Off by default (can be large for reasoning "
+             "models). pass@k/worst@k for any k<=n_samples are recomputable "
+             "from the saved 'successes' vector regardless of this flag.",
+    )
+    parser.add_argument(
+        "--completion_char_cap", type=int, default=0,
+        help="With --save_completions, truncate each saved completion to this "
+             "many chars (0 = no cap). Use a cap only if disk is tight; note "
+             "truncated text cannot be reliably re-scored.",
+    )
     # EAD-specific
     parser.add_argument("--start_temp", type=float, default=1.2)
     parser.add_argument("--end_temp", type=float, default=0.1)
@@ -234,7 +248,7 @@ def main():
         first_completion = out.outputs[0].text if out.outputs else ""
         if len(first_completion) > 4000:
             first_completion = first_completion[:4000] + " ...[truncated]"
-        per_prompt.append({
+        record = {
             "task_id": row.get("extra_info", {}).get("task_id"),
             "successes": successes,
             "statuses": statuses,
@@ -242,7 +256,15 @@ def main():
             "pass@1": first_ok,
             "pass@k": any_ok,
             "worst@k": all_ok,
-        })
+        }
+        if args.save_completions:
+            texts = [c.text for c in out.outputs]
+            if args.completion_char_cap > 0:
+                cap = args.completion_char_cap
+                texts = [t if len(t) <= cap else t[:cap] + " ...[truncated]"
+                         for t in texts]
+            record["completions"] = texts
+        per_prompt.append(record)
 
     n = len(rows)
     summary = {

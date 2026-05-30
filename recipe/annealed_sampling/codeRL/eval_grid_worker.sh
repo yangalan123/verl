@@ -32,6 +32,13 @@
 #   ENABLE_THINKING default auto  -- auto | on | off (Qwen3 dual-mode templates)
 #   MAX_MODEL_LEN  default -1     -- vLLM context window (-1 = model default)
 #   TP             default 1      -- tensor_parallel_size (raise for big models)
+#   SAVE_COMPLETIONS default 0    -- 1 = persist all completion texts for later
+#                                    re-scoring (pass@k/worst@k for any k<=N are
+#                                    already recomputable from 'successes')
+#   COMPLETION_CHAR_CAP default 0 -- truncate saved completions (0 = no cap)
+#
+# NOTE: to later sweep pass@k / worst@k up to K, generate with N_SAMPLES>=K
+# (e.g. N_SAMPLES=16), then use recompute_passk.py -- no regeneration needed.
 
 set -euo pipefail
 
@@ -52,6 +59,8 @@ MAX_TOKENS="${MAX_TOKENS:-2048}"
 ENABLE_THINKING="${ENABLE_THINKING:-auto}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:--1}"
 TP="${TP:-1}"
+SAVE_COMPLETIONS="${SAVE_COMPLETIONS:-0}"
+COMPLETION_CHAR_CAP="${COMPLETION_CHAR_CAP:-0}"
 
 FIXED_TEMPS="${FIXED_TEMPS:-0.7 1.0 1.2}"
 DECAY_FREQS="${DECAY_FREQS:-25 50 100 200}"
@@ -81,6 +90,11 @@ mkdir -p "${OUT_DIR}"
 echo "[worker] GPU=${GPU_ID} bench=${BENCH} mode=${MODE} model=${MODEL}"
 echo "[worker] parquet=${PARQUET}"
 
+SAVE_ARGS=()
+if [ "${SAVE_COMPLETIONS}" = "1" ]; then
+    SAVE_ARGS+=(--save_completions --completion_char_cap "${COMPLETION_CHAR_CAP}")
+fi
+
 run_one() {
     # args passed straight through to the python entry point
     CUDA_VISIBLE_DEVICES="${GPU_ID}" python recipe/annealed_sampling/codeRL/inference_only_eval.py \
@@ -94,6 +108,7 @@ run_one() {
         --tensor_parallel_size "${TP}" \
         --gpu_memory_utilization "${GPU_MEM_UTIL}" \
         --output_dir "${OUT_DIR}" \
+        ${SAVE_ARGS[@]+"${SAVE_ARGS[@]}"} \
         "$@"
 }
 

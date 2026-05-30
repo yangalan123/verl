@@ -327,6 +327,25 @@ The headline summary prints, per (model, benchmark), the best fixed-T vs. best
 EAD config on Pass@1 / Pass@K / Worst@K plus the EAD delta -- copy the table
 rows straight into Table 6 and quote the deltas in the rebuttal text.
 
+**Sweeping pass@k / worst@k WITHOUT re-running generation.** Each
+`per_prompt__*.jsonl` already stores the per-completion score vector
+(`successes`), and pass@k / worst@k are a pure function of "c correct out of n".
+So `recompute_passk.py` computes pass@k and worst@k for any list of k offline
+(unbiased Codex-style estimators), no regeneration needed:
+
+```bash
+python recipe/annealed_sampling/codeRL/recompute_passk.py \
+    --root ./logs/inference_only_eval --k 1,2,4,8,16 --csv passk.csv --md passk.md
+```
+
+The ONLY requirement is that generation used `n_samples >= max(k)`: to be able
+to report pass@16 later, run the eval grid with `N_SAMPLES=16` (the script warns
+and leaves cells blank for any k that exceeds the samples actually generated).
+Re-scoring under a *different* reward/extraction is a separate need -- for that,
+generate with `SAVE_COMPLETIONS=1` (optionally `COMPLETION_CHAR_CAP=N`) so the
+full completion texts are persisted to the per-prompt JSONL; otherwise only the
+first completion's (truncated) text is kept.
+
 ---
 
 ## 8. Troubleshooting
