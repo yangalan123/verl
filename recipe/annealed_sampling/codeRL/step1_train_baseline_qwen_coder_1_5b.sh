@@ -31,6 +31,9 @@ rollout_n=4
 k_max=8
 save_freq=10
 test_freq=10
+# Quick-and-dirty rebuttal runs: cap at TOTAL_TRAINING_STEPS steps (default 100)
+# to reveal the EAD-vs-baseline trend without a full epoch. Set -1 for a full epoch.
+TOTAL_TRAINING_STEPS="${TOTAL_TRAINING_STEPS:-100}"
 
 train_files="['${DATA_ROOT}/eurus2_code/train.parquet']"
 val_files="['${DATA_ROOT}/livecodebench/release_v2_test.parquet','${DATA_ROOT}/humanevalplus/test.parquet']"
@@ -77,11 +80,12 @@ PYTHONUNBUFFERED=1 VLLM_USE_V1=0 python3 -m verl.trainer.main_ppo \
     trainer.n_gpus_per_node=${NUM_GPU_PER_NODE} \
     trainer.rollout_data_dir=${log_dir}/rollout_data \
     trainer.validation_data_dir=${log_dir}/validation_data \
-    trainer.max_actor_ckpt_to_keep=3 \
-    trainer.max_critic_ckpt_to_keep=3 \
+    trainer.max_actor_ckpt_to_keep=1 \
+    trainer.max_critic_ckpt_to_keep=1 \
     trainer.val_before_train=True \
     trainer.nnodes=1 \
     trainer.save_freq=${save_freq} \
     trainer.default_local_dir=checkpoints/${project_name}/${experiment_name} \
     trainer.test_freq=${test_freq} \
+    trainer.total_training_steps=${TOTAL_TRAINING_STEPS} \
     trainer.total_epochs=1 2>&1 | tee ${log_dir}/run.log

@@ -221,7 +221,9 @@ bash recipe/annealed_sampling/codeRL/step1_train_ead_qwen_coder_1_5b.sh
 Each script automatically:
 
 * trains on `data/eurus2_code/train.parquet`
+* **caps at 100 training steps by default** (`TOTAL_TRAINING_STEPS=100`) for a quick-and-dirty rebuttal signal; override with `TOTAL_TRAINING_STEPS=-1` for a full epoch
 * validates on both `LiveCodeBench` and `HumanEval+` every 10 steps
+* keeps only the most recent checkpoint (`max_*_ckpt_to_keep=1`) to bound disk usage
 * checkpoints to `checkpoints/codeRL_eurus2_qwen_coder_1_5b/<experiment_name>/`
 * logs to W&B if a key is configured, otherwise just to console + file
 
@@ -241,7 +243,7 @@ N_SAMPLES=8 MODEL=${MODEL} bash recipe/annealed_sampling/codeRL/step2_eval_infer
 
 ## 6. Day 2 -- math ablations (only if compute allows)
 
-Both scripts run a *sequential* sweep over hyperparameter / decay-mode values. Each individual run takes ~10 h. The scripts are written so you can comment out values you don't need.
+Both scripts run a *sequential* sweep over hyperparameter / decay-mode values. **Ablations are capped at 100 training steps by default** (`TOTAL_TRAINING_STEPS=100`) -- enough to reveal the relative ordering of configs without training to convergence, which is all an ablation needs. At ~100 steps each run is roughly 1-2 h instead of ~10 h. The scripts are written so you can comment out values you don't need.
 
 ```bash
 # d_max sweep: 200, 1000, 5000, 40000, 200000 (the paper uses 40000)
@@ -249,6 +251,13 @@ bash recipe/annealed_sampling/ablation_d_max_sweep_qwen_math_1_5b.sh
 
 # schedule shapes: negexp, linear, two_stage, mean_matched
 bash recipe/annealed_sampling/ablation_schedule_shapes_qwen_math_1_5b.sh
+```
+
+To change the cap (e.g. a longer 200-step run, or a full epoch):
+
+```bash
+TOTAL_TRAINING_STEPS=200 bash recipe/annealed_sampling/ablation_d_max_sweep_qwen_math_1_5b.sh
+TOTAL_TRAINING_STEPS=-1  bash recipe/annealed_sampling/ablation_schedule_shapes_qwen_math_1_5b.sh   # full epoch
 ```
 
 The schedule-shape script depends on the new decay modes added to `verl/workers/rollout/vllm_rollout/annealed_sampling.py` (see the `# BEGIN COLM REBUTTAL EDIT` block). These modes are already in the repo; no extra setup needed.

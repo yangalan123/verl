@@ -39,6 +39,10 @@ end_temp=0.1
 decay_freq=200
 decay_freq_increase_factor=5
 decay_freq_cap_large=40000
+# Ablations only need to reveal the relative ordering of configs, not train to
+# convergence, so we cap each run at TOTAL_TRAINING_STEPS steps (default 100).
+# Set to -1 to fall back to a full epoch.
+TOTAL_TRAINING_STEPS="${TOTAL_TRAINING_STEPS:-100}"
 
 train_files="['${DATA_ROOT}/numina_math/train.parquet']"
 val_files="['${DATA_ROOT}/math500/test.parquet']"
@@ -93,12 +97,13 @@ for STRATEGY in negexp linear two_stage mean_matched; do
         trainer.n_gpus_per_node=${NUM_GPU_PER_NODE} \
         trainer.rollout_data_dir=${log_dir}/rollout_data \
         trainer.validation_data_dir=${log_dir}/validation_data \
-        trainer.max_actor_ckpt_to_keep=3 \
-        trainer.max_critic_ckpt_to_keep=3 \
+        trainer.max_actor_ckpt_to_keep=1 \
+        trainer.max_critic_ckpt_to_keep=1 \
         trainer.val_before_train=True \
         trainer.nnodes=1 \
         trainer.save_freq=${save_freq} \
         trainer.default_local_dir=checkpoints/${project_name}/${experiment_name} \
         trainer.test_freq=${test_freq} \
+        trainer.total_training_steps=${TOTAL_TRAINING_STEPS} \
         trainer.total_epochs=1 2>&1 | tee ${log_dir}/run.log
 done
