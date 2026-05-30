@@ -193,7 +193,16 @@ Two helper scripts wrap the per-config calls so you don't orchestrate by hand:
   # quick subset (one model, subsampled):
   MODELS_FILTER="Qwen3-4B" MAX_PROMPTS=40 N_SAMPLES=4 \
       bash recipe/annealed_sampling/codeRL/run_day0_models.sh
+  # one dedicated session per model, each pinned to its own GPU (run each
+  # line in a separate terminal/tmux pane):
+  GPUS=0 MODELS_FILTER="Qwen2.5-Coder-1.5B" bash recipe/annealed_sampling/codeRL/run_day0_models.sh
+  GPUS=1 MODELS_FILTER="Qwen2.5-Coder-7B"   bash recipe/annealed_sampling/codeRL/run_day0_models.sh
+  GPUS=2 MODELS_FILTER="Qwen3-4B"           bash recipe/annealed_sampling/codeRL/run_day0_models.sh
+  GPUS=3 MODELS_FILTER="Qwen3-8B"           bash recipe/annealed_sampling/codeRL/run_day0_models.sh
+  # a TP>1 MoE model needs >=TP GPUs in $GPUS:
+  GPUS="0,1" MODELS_FILTER="Qwen3-Coder-30B" bash recipe/annealed_sampling/codeRL/run_day0_models.sh
   ```
+  `GPUS` (comma- or space-separated) restricts the invocation to those GPUs: for TP=1 models the 4 tasks run up to `|GPUS|` at a time (so `GPUS=0` runs them sequentially on GPU 0, perfect for a dedicated per-model session); for TP>1 models the first `TP` ids are used and the model is skipped if `|GPUS| < TP`.
   The registry pins the right output budget per model. **Long-reasoning models matter here:** the Qwen3 dual-mode models (`Qwen3-4B`, `Qwen3-8B`) emit `<think>` traces, so they run with `ENABLE_THINKING=on` and a large `MAX_TOKENS` (16384) / `MAX_MODEL_LEN` (20480); the code-specialized Instruct models (`Qwen2.5-Coder-{1.5B,7B}-Instruct`) stay at `MAX_TOKENS=2048`, non-thinking. `Qwen3-Coder-30B-A3B-Instruct` is a 30B (3B-active) MoE set to `TP=2`; drop it to `TP=1` if you can spare only one GPU per model (it fits one A100-80GB with a smaller context). The EAD logits processor anneals temperature over the *full* token stream, including the thinking trace, which is exactly the regime we want to test.
 
 `eval_grid_worker.sh` writes each benchmark into its **own subdirectory** so HumanEval+ and LiveCodeBench never share a folder:

@@ -16,9 +16,18 @@
 #   MODELS_FILTER="Qwen3-4B" MAX_PROMPTS=40 N_SAMPLES=4 \
 #       bash recipe/annealed_sampling/codeRL/run_day0_models.sh
 #
+#   # ONE dedicated session per model, each pinned to its own GPU:
+#   #   session 1:  GPUS=0 MODELS_FILTER=Qwen2.5-Coder-1.5B bash ...run_day0_models.sh
+#   #   session 2:  GPUS=1 MODELS_FILTER=Qwen2.5-Coder-7B   bash ...run_day0_models.sh
+#   #   session 3:  GPUS=2 MODELS_FILTER=Qwen3-4B           bash ...run_day0_models.sh
+#   #   session 4:  GPUS=3 MODELS_FILTER=Qwen3-8B           bash ...run_day0_models.sh
+#   # a TP>1 (MoE) model needs >=TP GPUs, e.g.:
+#   #   GPUS="0,1" MODELS_FILTER=Qwen3-Coder-30B bash ...run_day0_models.sh
+#
 # Models run SEQUENTIALLY (one at a time). Within each model, the 4 (benchmark,
-# mode) tasks run in PARALLEL across GPUs 0-3 when TP=1; for TP>1 models the
-# tasks run sequentially on the first TP GPUs.
+# mode) tasks are scheduled onto the GPUs in $GPUS: for TP=1 models, up to
+# N=|GPUS| tasks run in parallel (one per GPU, in waves); for TP>1 models the
+# tasks run sequentially on the first TP GPUs in $GPUS.
 #
 # Registry row format (pipe-separated):
 #   MODEL_ID | MAX_TOKENS | ENABLE_THINKING(auto|on|off) | TP | MAX_MODEL_LEN
@@ -27,6 +36,9 @@
 #   DATA_ROOT, OUT_DIR, N_SAMPLES, MAX_PROMPTS, LCB_VERSION, GPU_MEM_UTIL,
 #   FIXED_TEMPS, DECAY_FREQS, START_TEMP, END_TEMP.
 #   MODELS_FILTER : substring; only run registry rows whose MODEL_ID matches.
+#   GPUS          : GPU ids this invocation may use (comma- OR space-separated).
+#                   Default "0 1 2 3". Set to a single id (e.g. GPUS=2) to give
+#                   one model its own dedicated session/GPU.
 
 set -euo pipefail
 
@@ -35,6 +47,15 @@ LOG_ROOT="${LOG_ROOT:-./logs/inference_only_eval/_worker_logs}"
 mkdir -p "${LOG_ROOT}"
 
 MODELS_FILTER="${MODELS_FILTER:-}"
+
+# GPUs this invocation may use. Accept comma- or space-separated lists.
+IFS=', ' read -r -a GPU_ARR <<< "${GPUS:-0 1 2 3}"
+N_GPUS="${#GPU_ARR[@]}"
+if [ "${N_GPUS}" -eq 0 ]; then
+    echo "GPUS resolved to an empty set; set GPUS, e.g. GPUS=0 or GPUS=\"0,1\"." >&2
+    exit 1
+fi
+echo "[day0] using GPUs: ${GPU_ARR[*]}  (count=${N_GPUS})"
 
 # --- Model registry -------------------------------------------------------
 # Code-specialized Instruct models are non-thinking and short-output; the
@@ -72,24 +93,32 @@ run_model() {
     export TP="${tp}"
 
     if [ "${tp}" -le 1 ]; then
-        # One task per GPU, in parallel across GPUs 0..3.
-        local pids=() gpu=0
-        for t in "${TASKS[@]}"; do
-            set -- ${t}; local bench="$1" mode="$2"
-            local logf="${LOG_ROOT}/${tag}__gpu${gpu}_${bench}_${mode}.log"
-            echo "[day0] launch GPU=${gpu} ${bench} ${mode} -> ${logf}"
-            bash "${WORKER}" "${gpu}" "${bench}" "${mode}" > "${logf}" 2>&1 &
-            pids+=("$!")
-            gpu=$((gpu + 1))
-        done
-        local fail=0
-        for pid in "${pids[@]}"; do
-            wait "${pid}" || { echo "[day0] worker pid ${pid} failed"; fail=1; }
+        # TP=1: schedule the tasks onto $GPU_ARR, up to N_GPUS at a time (waves),
+        # one task per GPU. With a single GPU this runs the tasks sequentially.
+        local ntasks="${#TASKS[@]}" i=0 fail=0
+        while [ "${i}" -lt "${ntasks}" ]; do
+            local pids=() g=0
+            while [ "${g}" -lt "${N_GPUS}" ] && [ "${i}" -lt "${ntasks}" ]; do
+                set -- ${TASKS[$i]}; local bench="$1" mode="$2"
+                local gpu="${GPU_ARR[$g]}"
+                local logf="${LOG_ROOT}/${tag}__gpu${gpu}_${bench}_${mode}.log"
+                echo "[day0] launch GPU=${gpu} ${bench} ${mode} -> ${logf}"
+                bash "${WORKER}" "${gpu}" "${bench}" "${mode}" > "${logf}" 2>&1 &
+                pids+=("$!")
+                g=$((g + 1)); i=$((i + 1))
+            done
+            for pid in "${pids[@]}"; do
+                wait "${pid}" || { echo "[day0] worker pid ${pid} failed"; fail=1; }
+            done
         done
         [ "${fail}" -eq 0 ] || echo "[day0] WARNING: ${tag} had failing workers (see logs)"
     else
-        # TP>1: run tasks sequentially on the first TP GPUs (comma list).
-        local gpu_list; gpu_list="$(seq -s, 0 $((tp - 1)))"
+        # TP>1: needs >=tp GPUs; use the first tp ids from $GPU_ARR (comma list).
+        if [ "${N_GPUS}" -lt "${tp}" ]; then
+            echo "[day0] SKIP ${tag}: needs TP=${tp} GPUs but GPUS has only ${N_GPUS} (${GPU_ARR[*]})." >&2
+            return 0
+        fi
+        local gpu_list; gpu_list="$(IFS=,; printf '%s' "${GPU_ARR[*]:0:${tp}}")"
         for t in "${TASKS[@]}"; do
             set -- ${t}; local bench="$1" mode="$2"
             local logf="${LOG_ROOT}/${tag}__gpu${gpu_list}_${bench}_${mode}.log"
