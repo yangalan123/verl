@@ -100,15 +100,15 @@ def _check_correctness(check_program: str, timeout: float):
     q = ctx.Queue()
     p = ctx.Process(target=_unsafe_execute, args=(check_program, q, timeout))
     p.start()
-    p.join(timeout=timeout + 2)
-    if p.is_alive():
-        p.kill()
-        p.join()
+    # Drain before join to avoid a pipe-buffer deadlock on large payloads.
     try:
-        status = q.get_nowait()
+        status = q.get(timeout=timeout + 2)
     except _queue_mod.Empty:
         status = "timed out"
-    # Drain & close so the pipe isn't held open into the next call.
+    if p.is_alive():
+        p.kill()
+    p.join()
+    # Close so the pipe isn't held open into the next call.
     try:
         q.close()
         q.join_thread()

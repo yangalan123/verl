@@ -273,11 +273,11 @@ print(pd.DataFrame(rows).sort_values(["bench", "mode", "T"]).to_markdown(index=F
   ```bash
   export TOKENIZERS_PARALLELISM=false
   ```
-* **`OSError: [Errno 16] Device or resource busy: '.nfsXXXX'`** during HumanEval+ scoring -- triggered by NFS silly-rename on the `multiprocessing.Manager()` socket when `$TMPDIR` is NFS-backed. The reward module (`verl/utils/reward_score/humanevalplus.py`) now avoids `Manager()` and routes scratch directories to a known-local root (`/dev/shm` -> `/tmp` -> `/var/tmp`). If your cluster has a different local scratch path, override it with:
-  ```bash
-  export HUMANEVALPLUS_TMPDIR=/path/to/local/scratch
-  ```
-  As a one-line quick fix without code changes you can also just point all of `$TMPDIR` at a local disk:
+* **`OSError: [Errno 16] Device or resource busy: '.nfsXXXX'`** during scoring -- triggered by NFS silly-rename on the `multiprocessing.Manager()` socket when `$TMPDIR` is NFS-backed. Both code rewards now avoid `Manager()` and use a `multiprocessing.Queue` (anonymous pipes, no on-disk artefact):
+  * HumanEval+: `verl/utils/reward_score/humanevalplus.py` (also routes its scratch dir to a local root `/dev/shm` -> `/tmp` -> `/var/tmp`; override with `HUMANEVALPLUS_TMPDIR`).
+  * LiveCodeBench / codecontests / apps / taco: `verl/utils/reward_score/prime_code/utils.py`.
+
+  If you still hit it (e.g. an older checkout), the one-line workaround without code changes is to point `$TMPDIR` at a local disk:
   ```bash
   export TMPDIR=/tmp     # or /dev/shm
   ```

@@ -16,6 +16,7 @@
 
 import multiprocessing
 import os
+import queue as _queue_mod
 import sys
 import traceback
 from typing import Optional
@@ -23,19 +24,23 @@ from typing import Optional
 from .testing_util import run_test
 
 
-def _temp_run(sample, generation, debug, result, metadata_list, timeout):
+def _temp_run(sample, generation, debug, result_q, timeout):
+    # NOTE: results are returned via a multiprocessing.Queue (anonymous pipes)
+    # rather than a multiprocessing.Manager().list(). Manager spawns a helper
+    # process that listens on a socket file under tempfile.gettempdir(); on
+    # NFS-backed $TMPDIR that socket gets silly-renamed to '.nfsXXXX' on
+    # cleanup and raises `OSError: [Errno 16] Device or resource busy` at
+    # shutdown. Queue avoids any on-disk artefact.
     with open(os.devnull, "w") as devnull:
         sys.stdout = devnull
         sys.stderr = devnull
         try:
             res, metadata = run_test(in_outs=sample, test=generation, debug=debug, timeout=timeout)
-            result.append(res)
-            metadata_list.append(metadata)
+            result_q.put((res, metadata))
         except Exception:
             # print(e) # some tracebacks are extremely long.
             traceback.print_exc(10)
-            result.append([-1 for i in range(len(sample["inputs"]))])
-            metadata_list.append({})
+            result_q.put(([-1 for i in range(len(sample["inputs"]))], {}))
 
 
 def check_correctness(in_outs: Optional[dict], generation, timeout=10, debug=True):
@@ -43,18 +48,30 @@ def check_correctness(in_outs: Optional[dict], generation, timeout=10, debug=Tru
     The global timeout is to catch some extreme/rare cases not handled by the timeouts
     inside `run_test`"""
 
-    manager = multiprocessing.Manager()
-    result = manager.list()
-    metadata_list = manager.list()
-    p = multiprocessing.Process(target=_temp_run, args=(in_outs, generation, debug, result, metadata_list, timeout))
+    ctx = multiprocessing.get_context("fork") if hasattr(os, "fork") else multiprocessing.get_context()
+    result_q = ctx.Queue()
+    p = ctx.Process(target=_temp_run, args=(in_outs, generation, debug, result_q, timeout))
     p.start()
-    p.join(timeout=timeout + 1)
+    # Drain the queue *before* join: a large payload can fill the OS pipe
+    # buffer, which would block the child's feeder thread and deadlock a join.
+    try:
+        res, metadata = result_q.get(timeout=timeout + 1)
+        result = [res]
+        metadata_list = [metadata]
+    except _queue_mod.Empty:
+        # consider that all tests failed
+        result = [[-1 for i in range(len(in_outs["inputs"]))]]
+        metadata_list = []
+        if debug:
+            print("global timeout")
     if p.is_alive():
         p.kill()
         # p.terminate()
-    if not result:
-        # consider that all tests failed
-        result = [[-1 for i in range(len(in_outs["inputs"]))]]
-        if debug:
-            print("global timeout")
+    p.join()
+    # Close so the pipe isn't held open into the next call.
+    try:
+        result_q.close()
+        result_q.join_thread()
+    except Exception:
+        pass
     return result[0], metadata_list
