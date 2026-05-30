@@ -92,25 +92,18 @@ If you have only one box, run D0 first while you decide whether you can afford D
 
 ### Parallelizing on a single 4xA100 node
 
-The Day-0 inference-only configs are very small (a 1.5B model in vLLM at TP=1 uses one GPU). On a 4xA100 node you can run **four** Day-0 configs simultaneously, one per GPU, by setting `CUDA_VISIBLE_DEVICES`:
+The Day-0 inference-only configs are very small: a 1.5B model in vLLM at `TP=1` fits on one A100. On a 4xA100 node you can therefore run **four configs at once, one per GPU**, by launching `inference_only_eval.py` directly (one process per `CUDA_VISIBLE_DEVICES`) instead of using the wrapper script `step2_eval_inference_only.sh`.
+
+> The wrapper script loops over *all* (benchmark, sampling-mode) configs sequentially in a single process. So running the wrapper four times in parallel would just do the same work four times. Either use the wrapper once (sequential, slow) **or** call the Python entry point directly (parallel, fast) -- not both.
+
+Example: 4 configs in parallel, two benchmarks x {best fixed-T baseline, EAD}:
 
 ```bash
-# Terminal/job 1
-CUDA_VISIBLE_DEVICES=0 N_SAMPLES=8 TP=1 \
-  bash recipe/annealed_sampling/codeRL/step2_eval_inference_only.sh \
-       2>&1 | tee logs/d0_gpu0.log &
-
-# Terminal/job 2 (or job 3, 4) -- same command, different CUDA_VISIBLE_DEVICES
-```
-
-To split across configs rather than benchmarks, call the underlying Python directly:
-
-```bash
-# GPU 0 -- HumanEval+, fixed T=0.7
+# GPU 0 -- HumanEval+, fixed T=1.0
 CUDA_VISIBLE_DEVICES=0 python recipe/annealed_sampling/codeRL/inference_only_eval.py \
     --model_name_or_path Qwen/Qwen2.5-Coder-1.5B-Instruct \
     --eval_parquet ./data/humanevalplus/test.parquet \
-    --mode fixed --temperature 0.7 --n_samples 8 \
+    --mode fixed --temperature 1.0 --n_samples 8 \
     --tensor_parallel_size 1 \
     --output_dir ./logs/inference_only_eval &
 
@@ -141,24 +134,38 @@ CUDA_VISIBLE_DEVICES=3 python recipe/annealed_sampling/codeRL/inference_only_eva
 wait
 ```
 
-The training runs (D1 / D2) each need all 4 GPUs because they use FSDP, so they cannot be parallelized on a single node.
+This covers the four highest-priority cells of Table 6 in one pass. To also run the secondary fixed temperatures (`T=0.7`, `T=1.2`), launch a second round in the same shape after the first `wait`.
 
-If you have multiple nodes, the D1/D2 sweeps are embarrassingly parallel -- just split the shell loops across nodes.
+If you'd rather just "set and forget", run the wrapper script **once** on all 4 GPUs:
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1,2,3 TP=1 N_SAMPLES=8 \
+  bash recipe/annealed_sampling/codeRL/step2_eval_inference_only.sh \
+       2>&1 | tee logs/d0_run.log
+```
+
+This is sequential (one config at a time, each using one GPU and leaving the others idle), so it is ~4x slower than the parallel pattern above but requires no manual orchestration.
+
+The training runs (D1 / D2) each need all 4 GPUs because they use FSDP, so they cannot be parallelized on a single node. If you have multiple nodes, the D1/D2 sweeps are embarrassingly parallel -- just split the shell loops across nodes.
 
 ---
 
-## 4. Day 0 (start here, runs in parallel)
+## 4. Day 0 (start here)
+
+The Day-0 wrapper script runs **one config at a time** (sequentially) over:
+
+* benchmarks: `HumanEval+`, `LiveCodeBench release_v2`
+* sampling: fixed `T in {0.7, 1.0, 1.2}` and `EAD negexp 1.2 -> 0.1`
+
+That is 8 configs in series, each using a single GPU. **Run it once**, not once-per-GPU.
 
 ```bash
-# All-in-one script (sequential by default -- splits across configs and benchmarks)
+# Set-and-forget option (sequential, ~3-4 h on 1 A100, ~same on 4 A100s since GPUs 1-3 sit idle)
 bash recipe/annealed_sampling/codeRL/step2_eval_inference_only.sh \
     2>&1 | tee logs/d0_run.log
 ```
 
-This loops over:
-
-* benchmarks: `HumanEval+`, `LiveCodeBench release_v2`
-* sampling: fixed `T in {0.7, 1.0, 1.2}` and `EAD negexp 1.2 -> 0.1`
+To actually use all 4 GPUs in parallel, call `inference_only_eval.py` directly with one process per `CUDA_VISIBLE_DEVICES` -- see the "Parallelizing on a single 4xA100 node" block in Section 3. That cuts the wall-clock to ~1 h.
 
 For each config it writes:
 
@@ -258,7 +265,27 @@ print(pd.DataFrame(rows).sort_values(["bench", "mode", "T"]).to_markdown(index=F
 
 * **`$'\r': command not found`** -- LF/CRLF mismatch. Run `dos2unix` on the script (see Section 0).
 * **vLLM `OOM` on EAD eval** -- lower `--gpu_memory_utilization` from 0.85 to 0.7 in the inference-only eval call.
-* **HumanEval+ scores all zero** -- usually the candidate is wrapped in extra prose. Check `per_prompt__*.jsonl`; if `successes` are mostly 0.0 with status `"failed: ..."` the model is just bad at the task. If status is `"timed out"` for many, raise the per-test timeout from 8s to 16s in `verl/utils/reward_score/humanevalplus.py:compute_score(..., timeout=...)`.
+* **`huggingface/tokenizers: The current process just got forked, after parallelism has already been used...`** -- harmless warning, not an error. It fires once per process when vLLM forks its workers after `AutoTokenizer.from_pretrained` has already initialised the Rust tokenizer thread pool. `inference_only_eval.py` already sets `TOKENIZERS_PARALLELISM=false` at the top of the file, so you should not see it from the eval entry point. If you do see it from a custom wrapper, prepend the env var:
+  ```bash
+  TOKENIZERS_PARALLELISM=false CUDA_VISIBLE_DEVICES=0 python my_script.py ...
+  ```
+  or once at the top of the shell:
+  ```bash
+  export TOKENIZERS_PARALLELISM=false
+  ```
+* **HumanEval+ scores 0% across the board** -- almost always a reward-path bug, not the model. Published Qwen2.5-Coder-1.5B-Instruct hits ~64% Pass@1, so a clean 0/164 means the candidate never reached the `check(...)` harness. Run the diagnostic:
+  ```bash
+  python recipe/annealed_sampling/codeRL/diagnose_humanevalplus.py \
+      --eval_parquet ./data/humanevalplus/test.parquet \
+      --per_prompt_jsonl ./logs/inference_only_eval/.../per_prompt__test__fixed__T1.0.jsonl
+  ```
+  It (1) checks that every parquet row has non-empty `entry_point` and `tests`; (2) re-scores the canonical solution (must return 1.0); (3) bucketises the failure statuses from a previous run and prints a few example completions per bucket so you can see whether the model's output is mis-formatted, the function name doesn't match, the test harness raises, etc. The patched `inference_only_eval.py` now also saves `statuses` and `first_completion` to `per_prompt__*.jsonl`, so future runs are debuggable end-to-end.
+
+  Common categories the diagnostic surfaces:
+  * `"failed: NameError: name 'X' is not defined"` -- the model used a different function name than `entry_point`. Loosen the candidate by also feeding the original prompt header (set `prompt_header = ex["prompt"]` in `prepare_eval_humanevalplus.py`).
+  * `"failed: SyntaxError: ..."` -- the extracted block is not Python (e.g., chat preamble leaked in). Inspect `first_completion`; you may want to switch to a non-instruct base model or tighten the system prompt.
+  * `"timed out"` -- raise the per-test timeout from 8s to 16s in `humanevalplus.compute_score(..., timeout=16.0)`.
+  * `"missing entry_point or tests"` from the parquet check -- the prepare script grabbed the wrong HF field. Re-run `prepare_eval_humanevalplus.py` after verifying the dataset schema (`evalplus/humanevalplus` uses field `test`).
 * **LCB scores all zero** -- usually a parsing issue. Make sure the model wraps the answer in a ```` ```python ... ``` ```` block; the system prompt in `prepare_eval_livecodebench.py` already asks for this. If you swap to a non-instruct base model, you may need to add a few-shot prefix.
 
 ---

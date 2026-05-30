@@ -107,14 +107,21 @@ def _create_tempdir():
 
 
 def _extract_python_block(completion: str) -> str:
-    """Pull the last ```python ... ``` block; fall back to the raw completion."""
+    """Pull a ```python ... ``` block (or a generic ``` ... ``` block) if present.
+
+    Falls back to the raw completion so that models which forget the fence are
+    not silently zeroed out.
+    """
     if "```python" in completion:
-        tail = completion.split("```python")[-1]
-        return tail.split("```")[0]
+        tail = completion.split("```python", 1)[1]
+        return tail.split("```", 1)[0]
     if "```" in completion:
-        tail = completion.split("```")[-1]
-        # crude: this branch is just so we still try something
-        return tail.split("```")[0]
+        # generic fenced block: take what's between the first pair of fences
+        parts = completion.split("```")
+        if len(parts) >= 3:
+            return parts[1]
+        # only an opening fence: take what follows it
+        return parts[1] if len(parts) >= 2 else completion
     return completion
 
 

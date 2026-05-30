@@ -31,6 +31,8 @@ import os
 import time
 from typing import List
 
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 import datasets
 
 from verl.utils.reward_score import default_compute_score
@@ -155,17 +157,37 @@ def main():
         data_source = row["data_source"]
         ground_truth = row["reward_model"]["ground_truth"]
         successes = []
+        statuses = []  # one per completion; populated for humanevalplus / prime_code
         for completion in out.outputs:
             text = completion.text
+            status_detail = None
             try:
-                res = default_compute_score(data_source, text, ground_truth)
+                # For the code rewards, call the underlying scorer directly so we
+                # can keep the failure-reason metadata. Other data sources still
+                # go through the standard dispatcher.
+                if data_source in ("humanevalplus", "mbppplus"):
+                    from verl.utils.reward_score import humanevalplus as _hep
+                    score_val, meta = _hep.compute_score(text, ground_truth)
+                    status_detail = (meta[0] if meta else {}).get("status") \
+                        or (meta[0] if meta else {}).get("error")
+                    score = float(score_val)
+                elif data_source in ("codecontests", "apps", "codeforces", "taco"):
+                    from verl.utils.reward_score import prime_code as _pc
+                    success, _meta = _pc.compute_score(text, ground_truth, continuous=True)
+                    # prime_code returns either a bool or a float in [0, 1]
+                    score = 1.0 if (success is True) else float(success) if isinstance(success, (int, float)) else 0.0
+                    status_detail = "passed" if score >= 0.999 else "failed"
+                else:
+                    res = default_compute_score(data_source, text, ground_truth)
+                    if isinstance(res, dict):
+                        score = float(res.get("score", 0.0))
+                    else:
+                        score = float(res)
             except Exception as e:  # noqa: BLE001
-                res = {"score": 0.0, "error": str(e)}
-            if isinstance(res, dict):
-                score = float(res.get("score", 0.0))
-            else:
-                score = float(res)
+                score = 0.0
+                status_detail = f"exception: {type(e).__name__}: {e}"
             successes.append(score)
+            statuses.append(status_detail)
         n_ok = sum(1 for s in successes if s >= 0.999)
         any_ok = 1.0 if n_ok > 0 else 0.0
         all_ok = 1.0 if n_ok == len(successes) else 0.0
@@ -173,9 +195,16 @@ def main():
         pass_at_1 += first_ok
         pass_at_k += any_ok
         worst_at_k += all_ok
+        # Keep the first completion's raw text so we can inspect format failures
+        # without re-running vLLM. Truncate to avoid blowing up the log.
+        first_completion = out.outputs[0].text if out.outputs else ""
+        if len(first_completion) > 4000:
+            first_completion = first_completion[:4000] + " ...[truncated]"
         per_prompt.append({
             "task_id": row.get("extra_info", {}).get("task_id"),
             "successes": successes,
+            "statuses": statuses,
+            "first_completion": first_completion,
             "pass@1": first_ok,
             "pass@k": any_ok,
             "worst@k": all_ok,
