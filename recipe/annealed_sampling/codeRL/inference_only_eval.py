@@ -41,15 +41,31 @@ from verl.workers.rollout.vllm_rollout.annealed_sampling import (
 )
 
 
-def _build_prompts(rows, tokenizer) -> List[str]:
-    """Apply the model's chat template to each row's prompt field."""
+def _build_prompts(rows, tokenizer, enable_thinking=None) -> List[str]:
+    """Apply the model's chat template to each row's prompt field.
+
+    `enable_thinking` is a tri-state:
+      None  -> use the model's chat-template default (don't pass the kwarg)
+      True  -> request thinking traces (Qwen3 dual-mode models)
+      False -> suppress thinking traces
+
+    Non-Qwen3 templates do not accept the kwarg; we retry without it.
+    """
     out = []
     for row in rows:
         msgs = list(row["prompt"])
+        kwargs = dict(tokenize=False, add_generation_prompt=True)
+        if enable_thinking is not None:
+            kwargs["enable_thinking"] = enable_thinking
         try:
-            text = tokenizer.apply_chat_template(
-                msgs, tokenize=False, add_generation_prompt=True,
-            )
+            text = tokenizer.apply_chat_template(msgs, **kwargs)
+        except TypeError:
+            # Template doesn't support enable_thinking; drop it and retry.
+            kwargs.pop("enable_thinking", None)
+            try:
+                text = tokenizer.apply_chat_template(msgs, **kwargs)
+            except Exception:
+                text = "\n".join(m.get("content", "") for m in msgs)
         except Exception:
             text = "\n".join(m.get("content", "") for m in msgs)
         out.append(text)
@@ -68,6 +84,17 @@ def main():
     parser.add_argument("--max_tokens", type=int, default=2048)
     parser.add_argument("--max_prompts", type=int, default=-1)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--enable_thinking", choices=["auto", "on", "off"], default="auto",
+        help="Qwen3 dual-mode chat template: 'on' requests <think> traces, "
+             "'off' suppresses them, 'auto' uses the template default. "
+             "Ignored by templates without thinking support.",
+    )
+    parser.add_argument(
+        "--max_model_len", type=int, default=-1,
+        help="vLLM context window. -1 lets vLLM use the model default; set "
+             "explicitly for long-reasoning models to bound KV-cache memory.",
+    )
     # EAD-specific
     parser.add_argument("--start_temp", type=float, default=1.2)
     parser.add_argument("--end_temp", type=float, default=0.1)
@@ -96,8 +123,13 @@ def main():
     if args.max_prompts > 0:
         rows = rows[: args.max_prompts]
 
-    prompts = _build_prompts(rows, tokenizer)
-    print(f"Loaded {len(rows)} prompts from {args.eval_parquet}", flush=True)
+    enable_thinking = {"auto": None, "on": True, "off": False}[args.enable_thinking]
+    prompts = _build_prompts(rows, tokenizer, enable_thinking=enable_thinking)
+    print(
+        f"Loaded {len(rows)} prompts from {args.eval_parquet} "
+        f"(enable_thinking={enable_thinking}, max_tokens={args.max_tokens})",
+        flush=True,
+    )
 
     llm_kwargs = dict(
         model=args.model_name_or_path,
@@ -105,6 +137,8 @@ def main():
         gpu_memory_utilization=args.gpu_memory_utilization,
         trust_remote_code=True,
     )
+    if args.max_model_len > 0:
+        llm_kwargs["max_model_len"] = args.max_model_len
     if args.mode == "ead":
         # Per-request LogitsProcessor; the vLLM v1 wrapper picks it up from
         # SamplingParams.extra_args (see WrapperAdapterLogitsProcessor).
@@ -221,6 +255,8 @@ def main():
         f"pass@{args.n_samples}": pass_at_k / max(n, 1),
         f"worst@{args.n_samples}": worst_at_k / max(n, 1),
         "config": {
+            "max_tokens": args.max_tokens,
+            "enable_thinking": args.enable_thinking,
             "temperature": args.temperature,
             "start_temp": args.start_temp,
             "end_temp": args.end_temp,

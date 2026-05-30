@@ -185,7 +185,16 @@ Two helper scripts wrap the per-config calls so you don't orchestrate by hand:
   ```bash
   bash recipe/annealed_sampling/codeRL/run_all_eval_parallel.sh
   ```
-  Per-worker logs land in `logs/inference_only_eval/_worker_logs/`. All `eval_grid_worker.sh` env vars (`MODEL`, `DATA_ROOT`, `OUT_DIR`, `N_SAMPLES`, `MAX_PROMPTS`, `LCB_VERSION`, `FIXED_TEMPS`, `DECAY_FREQS`, `START_TEMP`, `END_TEMP`, `GPU_MEM_UTIL`) are honored.
+  Per-worker logs land in `logs/inference_only_eval/_worker_logs/`. All `eval_grid_worker.sh` env vars (`MODEL`, `DATA_ROOT`, `OUT_DIR`, `N_SAMPLES`, `MAX_PROMPTS`, `LCB_VERSION`, `FIXED_TEMPS`, `DECAY_FREQS`, `START_TEMP`, `END_TEMP`, `GPU_MEM_UTIL`, `MAX_TOKENS`, `ENABLE_THINKING`, `MAX_MODEL_LEN`, `TP`) are honored.
+
+* **`run_day0_models.sh`** -- Day-0 only: sweeps a **registry of newer Qwen models** (edit the `MODELS` array at the top), running the full `{humanevalplus, livecodebench} x {fixed, ead}` grid for each. Models run sequentially; for `TP=1` models the four tasks run in parallel across GPUs 0-3. This is the script to use for the "does EAD transfer to newer / stronger / long-reasoning models?" comparison.
+  ```bash
+  bash recipe/annealed_sampling/codeRL/run_day0_models.sh
+  # quick subset (one model, subsampled):
+  MODELS_FILTER="Qwen3-4B" MAX_PROMPTS=40 N_SAMPLES=4 \
+      bash recipe/annealed_sampling/codeRL/run_day0_models.sh
+  ```
+  The registry pins the right output budget per model. **Long-reasoning models matter here:** the Qwen3 dual-mode models (`Qwen3-4B`, `Qwen3-8B`) emit `<think>` traces, so they run with `ENABLE_THINKING=on` and a large `MAX_TOKENS` (16384) / `MAX_MODEL_LEN` (20480); the code-specialized Instruct models (`Qwen2.5-Coder-{1.5B,7B}-Instruct`) stay at `MAX_TOKENS=2048`, non-thinking. `Qwen3-Coder-30B-A3B-Instruct` is a 30B (3B-active) MoE set to `TP=2`; drop it to `TP=1` if you can spare only one GPU per model (it fits one A100-80GB with a smaller context). The EAD logits processor anneals temperature over the *full* token stream, including the thinking trace, which is exactly the regime we want to test.
 
 `eval_grid_worker.sh` writes each benchmark into its **own subdirectory** so HumanEval+ and LiveCodeBench never share a folder:
 
@@ -285,27 +294,24 @@ The placeholder cells live in `review_and_rebuttal/COLM/source_unzipped/colm_202
 * `Fig. ablation_cap_extended` (d_max sweep): build a single matplotlib figure from the W&B "best@16" curves across the 5 runs.
 * `Fig. schedule_shapes`: same, across the 4 modes.
 
-A short Python helper to assemble Table 6 from the Day-0 JSON files:
+**Aggregator (recommended).** `aggregate_day0_results.py` walks every
+`summary__*.json` under the eval root and emits a console table, CSV, Markdown,
+and an "EAD-best vs fixed-best" headline summary (the number for the rebuttal).
+Pure stdlib, no pandas. The shell wrapper `collect_day0_results.sh` runs it with
+timestamps and dumps CSV + MD into `./logs/day0_tables/`:
 
-```python
-import glob, json, pandas as pd
-# recursive ** to pick up the per-benchmark subdirs written by eval_grid_worker.sh
-rows = []
-for f in glob.glob("logs/inference_only_eval/Qwen2.5-Coder-1.5B-Instruct/**/summary__*.json",
-                   recursive=True):
-    s = json.load(open(f))
-    mode = s["mode"]
-    rows.append({
-        "bench": "HumanEval+" if "humanevalplus" in s["eval_parquet"] else "LiveCodeBench",
-        "mode": mode,
-        # for EAD, report the decay_freq so the ablation rows are distinguishable
-        "config": (s["config"]["temperature"] if mode == "fixed"
-                   else f"d={s['config']['decay_freq']} ({s['config']['start_temp']}->{s['config']['end_temp']})"),
-        "pass@1": round(s["pass@1"], 4),
-        f"pass@{s['n_samples_per_prompt']}": round(s[f"pass@{s['n_samples_per_prompt']}"], 4),
-    })
-print(pd.DataFrame(rows).sort_values(["bench", "mode", "config"]).to_markdown(index=False))
+```bash
+# everything at once: console table + CSV + MD + headline deltas
+bash recipe/annealed_sampling/codeRL/collect_day0_results.sh
+
+# or call the python directly with filters
+python recipe/annealed_sampling/codeRL/aggregate_day0_results.py \
+    --root ./logs/inference_only_eval --summary --model Qwen3-4B
 ```
+
+The headline summary prints, per (model, benchmark), the best fixed-T vs. best
+EAD config on Pass@1 / Pass@K / Worst@K plus the EAD delta -- copy the table
+rows straight into Table 6 and quote the deltas in the rebuttal text.
 
 ---
 

@@ -155,12 +155,27 @@ def _create_tempdir():
             os.chdir(cwd)
 
 
+def _strip_reasoning_trace(completion: str) -> str:
+    """Drop a leading <think>...</think> reasoning trace (Qwen3 dual-mode etc.).
+
+    Long-reasoning models often emit scratch code inside the trace; we score the
+    final answer, so we keep only what follows the closing tag. An unterminated
+    trace (still 'thinking' when truncated) leaves nothing useful, so we return
+    the original text in that case.
+    """
+    close = "</think>"
+    if close in completion:
+        return completion.split(close, 1)[1]
+    return completion
+
+
 def _extract_python_block(completion: str) -> str:
     """Pull a ```python ... ``` block (or a generic ``` ... ``` block) if present.
 
     Falls back to the raw completion so that models which forget the fence are
     not silently zeroed out.
     """
+    completion = _strip_reasoning_trace(completion)
     if "```python" in completion:
         tail = completion.split("```python", 1)[1]
         return tail.split("```", 1)[0]

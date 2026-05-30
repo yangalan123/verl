@@ -21,13 +21,17 @@
 #   END_TEMP      default 0.1               -- EAD tau_min
 #
 # Other env vars:
-#   MODEL         default Qwen/Qwen2.5-Coder-1.5B-Instruct
-#   DATA_ROOT     default ./data
-#   OUT_DIR       default ./logs/inference_only_eval/<model-basename>
-#   N_SAMPLES     default 8
-#   MAX_PROMPTS   default -1 (all)
-#   LCB_VERSION   default release_v2
-#   GPU_MEM_UTIL  default 0.85
+#   MODEL          default Qwen/Qwen2.5-Coder-1.5B-Instruct
+#   DATA_ROOT      default ./data
+#   OUT_DIR        default ./logs/inference_only_eval/<model-basename>
+#   N_SAMPLES      default 8
+#   MAX_PROMPTS    default -1 (all)
+#   LCB_VERSION    default release_v2
+#   GPU_MEM_UTIL   default 0.85
+#   MAX_TOKENS     default 2048   -- generation budget; raise for reasoning models
+#   ENABLE_THINKING default auto  -- auto | on | off (Qwen3 dual-mode templates)
+#   MAX_MODEL_LEN  default -1     -- vLLM context window (-1 = model default)
+#   TP             default 1      -- tensor_parallel_size (raise for big models)
 
 set -euo pipefail
 
@@ -44,6 +48,10 @@ N_SAMPLES="${N_SAMPLES:-8}"
 MAX_PROMPTS="${MAX_PROMPTS:--1}"
 LCB_VERSION="${LCB_VERSION:-release_v2}"
 GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.85}"
+MAX_TOKENS="${MAX_TOKENS:-2048}"
+ENABLE_THINKING="${ENABLE_THINKING:-auto}"
+MAX_MODEL_LEN="${MAX_MODEL_LEN:--1}"
+TP="${TP:-1}"
 
 FIXED_TEMPS="${FIXED_TEMPS:-0.7 1.0 1.2}"
 DECAY_FREQS="${DECAY_FREQS:-25 50 100 200}"
@@ -80,7 +88,10 @@ run_one() {
         --eval_parquet "${PARQUET}" \
         --n_samples "${N_SAMPLES}" \
         --max_prompts "${MAX_PROMPTS}" \
-        --tensor_parallel_size 1 \
+        --max_tokens "${MAX_TOKENS}" \
+        --enable_thinking "${ENABLE_THINKING}" \
+        --max_model_len "${MAX_MODEL_LEN}" \
+        --tensor_parallel_size "${TP}" \
         --gpu_memory_utilization "${GPU_MEM_UTIL}" \
         --output_dir "${OUT_DIR}" \
         "$@"
