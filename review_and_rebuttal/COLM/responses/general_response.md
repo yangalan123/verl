@@ -2,6 +2,8 @@
 
 We thank all three reviewers for their careful reading and constructive feedback. Several concerns recurred across reviews and motivated a single set of revisions, which we summarize here before responding to each reviewer individually. All revisions are highlighted in blue in the revised PDF via the `\colmedit{...}` macro.
 
+**On the status of the new experiments.** Given the rebuttal window, we report below the results we were able to complete in time: the inference-only code-reasoning comparison, short-horizon (100-step) RL training runs for the code and ablation studies, and all of the clarifying/structural paper edits (pseudocode, DPI framing, TIS specification, hyperparameter tables and selection guide). These short-horizon results already show the trends we claim. Longer-horizon runs and the wider hyperparameter sweeps (e.g., the full multi-order-of-magnitude `d_max` robustness sweep) are still running; we will update the corresponding threads with those numbers as they complete, and the camera-ready will contain the fully converged versions. All scripts needed to reproduce every result are already committed to the repository.
+
 ## Summary of revisions
 
 1. **Sharper method specification (Sec. 3, App. C).**
@@ -17,12 +19,12 @@ We thank all three reviewers for their careful reading and constructive feedback
    We add a controlled comparison of four schedules with identical hyperparameters but different shapes: (a) negexp (EAD default), (b) linear, (c) two-stage step, and (d) a fixed-temperature `mean_matched` control whose constant temperature equals the time-average of negexp. This isolates *schedule shape* from *entropy budget*. The corresponding training scripts are committed at `recipe/annealed_sampling/ablation_schedule_shapes_qwen_math_1_5b.sh`.
 
 5. **Extended d_max sensitivity (App. \ref{app:dmax_sensitivity}).**
-   We extend the d_max sweep beyond the original `{25, 200}` to `{25, 200, 1000, 5000, 40000, 200000}` so that the cap is varied over four orders of magnitude. Recipe at `recipe/annealed_sampling/ablation_d_max_sweep_qwen_math_1_5b.sh`.
+   We extend the d_max sweep beyond the original `{25, 200}`. For the rebuttal we report a short-horizon sweep over the caps that are actually exercised within the run; the full multi-order-of-magnitude sweep `{200, 1000, 5000, 40000, 200000}` requires a longer horizon (within a short run the decay rate never reaches the larger caps) and is in progress -- we will add it to this thread and the camera-ready. Recipe at `recipe/annealed_sampling/ablation_d_max_sweep_qwen_math_1_5b.sh`.
 
 6. **Code-reasoning experiments (App. \ref{app:code_experiments}).**
    We add a code-reasoning RLVR setup on Qwen-2.5-Coder-1.5B-Instruct, trained on the PRIME-RL Eurus-2 code subset (10K problems, stdin/stdout test cases) and evaluated on LiveCodeBench (release_v2) and HumanEval+. Code is executed locally via subprocess + SIGALRM (the PRIME-RL path, no Docker / no external sandbox). We also report an inference-only "Day-0" comparison on the off-the-shelf base model to isolate the sampling-side contribution. Full recipe in `recipe/annealed_sampling/codeRL/`.
 
 7. **Result tables with Pass@1 and confidence intervals.**
-   We add result tables (Tables 4, 5, 6 in the revised appendix) that report Pass@1, Pass@16, Worst@16, mean response length, evaluation set size, number of seeds, and bootstrap 95% CIs, in addition to the existing training-curve figures. (Numbers from the rebuttal runs will be filled in by the camera-ready deadline; the scripts are now in the repo.)
+   We add result tables (Tables 4, 5, 6 in the revised appendix) that report Pass@1, Pass@16, Worst@16, mean response length, evaluation set size, number of seeds, and bootstrap 95% CIs, in addition to the existing training-curve figures. We populate these with the runs completed during the rebuttal window and will fill in the remaining (longer-horizon) entries as they finish; the scripts are already in the repo.
 
 We address each reviewer's specific points below.
