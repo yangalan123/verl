@@ -167,12 +167,36 @@ bash recipe/annealed_sampling/codeRL/step2_eval_inference_only.sh \
 
 To actually use all 4 GPUs in parallel, call `inference_only_eval.py` directly with one process per `CUDA_VISIBLE_DEVICES` -- see the "Parallelizing on a single 4xA100 node" block in Section 3. That cuts the wall-clock to ~1 h.
 
-For each config it writes:
+### Automated grid sweep (recommended)
+
+Two helper scripts wrap the per-config calls so you don't orchestrate by hand:
+
+* **`eval_grid_worker.sh <gpu_id> <benchmark> <mode>`** -- pins one GPU and loops over a grid on one benchmark:
+  * `mode=fixed` loops over `FIXED_TEMPS` (default `0.7 1.0 1.2`).
+  * `mode=ead` loops over the EAD decay-rate ablation `DECAY_FREQS` (default `25 50 100 200`, i.e. `d_0`), at `START_TEMP=1.2 -> END_TEMP=0.1`.
+  ```bash
+  # one GPU, HumanEval+, all three fixed temperatures
+  bash recipe/annealed_sampling/codeRL/eval_grid_worker.sh 0 humanevalplus fixed
+  # one GPU, HumanEval+, EAD decay_freq ablation
+  bash recipe/annealed_sampling/codeRL/eval_grid_worker.sh 1 humanevalplus ead
+  ```
+
+* **`run_all_eval_parallel.sh`** -- launches four workers at once (one per GPU): `{humanevalplus, livecodebench} x {fixed, ead}`. Each worker loops over its own grid internally.
+  ```bash
+  bash recipe/annealed_sampling/codeRL/run_all_eval_parallel.sh
+  ```
+  Per-worker logs land in `logs/inference_only_eval/_worker_logs/`. All `eval_grid_worker.sh` env vars (`MODEL`, `DATA_ROOT`, `OUT_DIR`, `N_SAMPLES`, `MAX_PROMPTS`, `LCB_VERSION`, `FIXED_TEMPS`, `DECAY_FREQS`, `START_TEMP`, `END_TEMP`, `GPU_MEM_UTIL`) are honored.
+
+`eval_grid_worker.sh` writes each benchmark into its **own subdirectory** so HumanEval+ and LiveCodeBench never share a folder:
 
 ```
-logs/inference_only_eval/<model>/summary__<bench>__<mode>.json
-logs/inference_only_eval/<model>/per_prompt__<bench>__<mode>.jsonl
+logs/inference_only_eval/<model>/humanevalplus/summary__test__<mode>__<tag>.json
+logs/inference_only_eval/<model>/livecodebench/summary__release_v2_test__<mode>__<tag>.json
 ```
+
+Within a benchmark subdir, each config writes a distinct file (fixed configs tagged by temperature, EAD configs by `neg_<tmax>_<tmin>_d<decay_freq>`), so nothing overwrites and you can diff the whole grid afterward.
+
+(The bare `inference_only_eval.py` entry point still writes flat into whatever `--output_dir` you pass; the per-benchmark subdir is added by the `eval_grid_worker.sh` wrapper.)
 
 The summary files contain `pass@1`, `pass@K`, `worst@K`, the number of prompts, and the full sampling config -- copy these directly into Table 6 (inference-only) in the paper appendix.
 
@@ -246,17 +270,22 @@ A short Python helper to assemble Table 6 from the Day-0 JSON files:
 
 ```python
 import glob, json, pandas as pd
+# recursive ** to pick up the per-benchmark subdirs written by eval_grid_worker.sh
 rows = []
-for f in glob.glob("logs/inference_only_eval/Qwen2.5-Coder-1.5B-Instruct/summary__*.json"):
+for f in glob.glob("logs/inference_only_eval/Qwen2.5-Coder-1.5B-Instruct/**/summary__*.json",
+                   recursive=True):
     s = json.load(open(f))
+    mode = s["mode"]
     rows.append({
         "bench": "HumanEval+" if "humanevalplus" in s["eval_parquet"] else "LiveCodeBench",
-        "mode": s["mode"],
-        "T": s["config"]["temperature"] if s["mode"] == "fixed" else "1.2->0.1",
+        "mode": mode,
+        # for EAD, report the decay_freq so the ablation rows are distinguishable
+        "config": (s["config"]["temperature"] if mode == "fixed"
+                   else f"d={s['config']['decay_freq']} ({s['config']['start_temp']}->{s['config']['end_temp']})"),
         "pass@1": round(s["pass@1"], 4),
         f"pass@{s['n_samples_per_prompt']}": round(s[f"pass@{s['n_samples_per_prompt']}"], 4),
     })
-print(pd.DataFrame(rows).sort_values(["bench", "mode", "T"]).to_markdown(index=False))
+print(pd.DataFrame(rows).sort_values(["bench", "mode", "config"]).to_markdown(index=False))
 ```
 
 ---
@@ -286,7 +315,7 @@ print(pd.DataFrame(rows).sort_values(["bench", "mode", "T"]).to_markdown(index=F
   ```bash
   python recipe/annealed_sampling/codeRL/diagnose_humanevalplus.py \
       --eval_parquet ./data/humanevalplus/test.parquet \
-      --per_prompt_jsonl ./logs/inference_only_eval/.../per_prompt__test__fixed__T1.0.jsonl
+      --per_prompt_jsonl ./logs/inference_only_eval/<model>/humanevalplus/per_prompt__test__fixed__T1.0.jsonl
   ```
   It (1) checks that every parquet row has non-empty `entry_point` and `tests`; (2) re-scores the canonical solution (must return 1.0); (3) bucketises the failure statuses from a previous run and prints a few example completions per bucket so you can see whether the model's output is mis-formatted, the function name doesn't match, the test harness raises, etc. The patched `inference_only_eval.py` now also saves `statuses` and `first_completion` to `per_prompt__*.jsonl`, so future runs are debuggable end-to-end.
 
