@@ -225,6 +225,25 @@ The summary files contain `pass@1`, `pass@K`, `worst@K`, the number of prompts, 
 
 You can run the *same* script against an RL-trained checkpoint by setting `MODEL=path/to/checkpoint` -- this is the cheapest way to populate Table 5 (RL-trained Pass@1) at the end.
 
+### Automated EAD parameter sweep (when EAD underperforms)
+
+If fixed-temp baselines look fine but EAD loses, the usual cause is that the
+`negexp` schedule was sized for long *math* responses: `tau` only reaches the
+floor at `t* = 20*decay_freq*ln(1+tau_max-tau_min)` tokens, which for the math
+defaults is ~3000 tokens -- far longer than a typical code completion, so the
+temperature never anneals. `ead_sweep.py` fixes this end-to-end on 4 GPUs:
+it runs a smoke pass to measure the response-length distribution and the
+per-position entropy (negative avg log-likelihood proxy, a la
+`yangalan123/LLMBranchingFactor`), derives `warmup_period` + `decay_freq`
+candidates from that, sweeps `start_temp x end_temp x decay_freq` (negexp), and
+reports the configs that beat the baseline. Generation (GPU) and scoring (CPU)
+are decoupled so GPUs never idle. See `recipe/annealed_sampling/codeRL/README_ead_sweep.md`.
+
+```bash
+python recipe/annealed_sampling/codeRL/ead_sweep.py --gpus 0,1,2,3 --dry_run   # plan
+python recipe/annealed_sampling/codeRL/ead_sweep.py --gpus 0,1,2,3             # run all
+```
+
 ---
 
 ## 5. Day 1 -- code-reasoning RL training

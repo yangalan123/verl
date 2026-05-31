@@ -36,9 +36,6 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 import datasets
 
 from verl.utils.reward_score import default_compute_score
-from verl.workers.rollout.vllm_rollout.annealed_sampling import (
-    AnnealedSamplingProcessor,
-)
 
 
 def _build_prompts(rows, tokenizer, enable_thinking=None) -> List[str]:
@@ -70,6 +67,64 @@ def _build_prompts(rows, tokenizer, enable_thinking=None) -> List[str]:
             text = "\n".join(m.get("content", "") for m in msgs)
         out.append(text)
     return out
+
+
+def score_completion(data_source, text, ground_truth):
+    """Score ONE completion. Returns (score_float, status_str_or_None).
+
+    Module-level so the CPU-only scorer (score_dump.py) can reuse the exact same
+    scoring path as the live eval. The heavy reward submodules are imported
+    lazily so importing this module never pulls in vllm/torch.
+    """
+    try:
+        if data_source in ("humanevalplus", "mbppplus"):
+            from verl.utils.reward_score import humanevalplus as _hep
+            score_val, meta = _hep.compute_score(text, ground_truth)
+            status = (meta[0] if meta else {}).get("status") \
+                or (meta[0] if meta else {}).get("error")
+            return float(score_val), status
+        if data_source in ("codecontests", "apps", "codeforces", "taco"):
+            from verl.utils.reward_score import prime_code as _pc
+            success, _meta = _pc.compute_score(text, ground_truth, continuous=True)
+            score = (1.0 if success is True
+                     else float(success) if isinstance(success, (int, float)) else 0.0)
+            return score, ("passed" if score >= 0.999 else "failed")
+        res = default_compute_score(data_source, text, ground_truth)
+        if isinstance(res, dict):
+            return float(res.get("score", 0.0)), None
+        return float(res), None
+    except Exception as e:  # noqa: BLE001
+        return 0.0, f"exception: {type(e).__name__}: {e}"
+
+
+def _completion_stats(completion, max_pos):
+    """Extract (n_tokens, mean_neglogp, neglogp_by_pos) from a vLLM output.
+
+    mean_neglogp is the negative average log-likelihood of the sampled tokens --
+    an unbiased Monte-Carlo estimate of the average per-token entropy (the
+    long-sequence entropy proxy used in "How Alignment Shrinks the Generative
+    Horizon", yangalan123/LLMBranchingFactor). Requires logprobs to have been
+    requested; otherwise mean_neglogp/neglogp_by_pos may be None.
+    """
+    token_ids = list(getattr(completion, "token_ids", []) or [])
+    n = len(token_ids)
+    mean_neglogp = None
+    neglogp_by_pos = None
+    cum = getattr(completion, "cumulative_logprob", None)
+    if cum is not None and n > 0:
+        mean_neglogp = -float(cum) / n
+    lp = getattr(completion, "logprobs", None)
+    if lp:
+        seq = []
+        for pos, tid in enumerate(token_ids):
+            d = lp[pos] if pos < len(lp) else None
+            entry = d.get(tid) if d else None
+            if entry is not None:
+                seq.append(-float(entry.logprob))
+        if seq:
+            mean_neglogp = sum(seq) / len(seq)
+            neglogp_by_pos = seq[: max_pos] if max_pos and max_pos > 0 else seq
+    return n, mean_neglogp, neglogp_by_pos
 
 
 def main():
@@ -108,6 +163,29 @@ def main():
         help="With --save_completions, truncate each saved completion to this "
              "many chars (0 = no cap). Use a cap only if disk is tight; note "
              "truncated text cannot be reliably re-scored.",
+    )
+    parser.add_argument(
+        "--logprobs", type=int, default=0,
+        help="If >0, request this many vLLM logprobs so we can record per-"
+             "completion token length and negative avg log-likelihood (entropy "
+             "proxy) for the smoke/analysis phase. 1 is enough.",
+    )
+    parser.add_argument(
+        "--logprob_max_pos", type=int, default=512,
+        help="When --logprobs>0, cap the per-position neg-logprob array stored "
+             "per completion to this many leading positions (keeps dumps small).",
+    )
+    parser.add_argument(
+        "--generate_only", action="store_true",
+        help="Generate and dump completions (+ length/entropy stats) WITHOUT "
+             "scoring, so the GPU is freed immediately and a separate CPU "
+             "process (score_dump.py) can score the dump. Writes gen__<tag>.jsonl "
+             "and genmeta__<tag>.json instead of summary/per_prompt.",
+    )
+    parser.add_argument(
+        "--tag_suffix", default="",
+        help="Optional suffix appended to the output tag (e.g. 'smoke') so "
+             "different runs of the same config don't overwrite each other.",
     )
     # EAD-specific
     parser.add_argument("--start_temp", type=float, default=1.2)
@@ -164,6 +242,7 @@ def main():
     print("Spinning up vLLM ...", flush=True)
     llm = LLM(**llm_kwargs)
 
+    logprobs_arg = args.logprobs if args.logprobs and args.logprobs > 0 else None
     if args.mode == "fixed":
         sampling_params = SamplingParams(
             n=args.n_samples,
@@ -171,6 +250,7 @@ def main():
             top_p=args.top_p,
             max_tokens=args.max_tokens,
             seed=args.seed,
+            logprobs=logprobs_arg,
         )
     else:
         sampling_params = SamplingParams(
@@ -179,6 +259,7 @@ def main():
             top_p=args.top_p,
             max_tokens=args.max_tokens,
             seed=args.seed,
+            logprobs=logprobs_arg,
             extra_args={
                 "exploration_temp": args.start_temp,
                 "stability_temp": args.end_temp,
@@ -196,7 +277,72 @@ def main():
     outs = llm.generate(prompts, sampling_params)
     print(f"Generation done in {time.time() - t0:.1f}s", flush=True)
 
-    # Score each sample.
+    out_tag = (
+        os.path.basename(args.eval_parquet).replace(".parquet", "")
+        + f"__{args.mode}"
+        + (f"__T{args.temperature}" if args.mode == "fixed"
+           else f"__neg_{args.start_temp}_{args.end_temp}_d{args.decay_freq}_w{args.warmup_period}")
+    )
+    if args.tag_suffix:
+        out_tag += f"__{args.tag_suffix}"
+
+    config = {
+        "max_tokens": args.max_tokens,
+        "enable_thinking": args.enable_thinking,
+        "temperature": args.temperature,
+        "start_temp": args.start_temp,
+        "end_temp": args.end_temp,
+        "decay_freq": args.decay_freq,
+        "decay_mode": args.decay_mode,
+        "decay_freq_cap_large": args.decay_freq_cap_large,
+        "decay_freq_increase_factor": args.decay_freq_increase_factor,
+        "warmup_period": args.warmup_period,
+        "logprobs": args.logprobs,
+    }
+
+    # ---- generate-only mode: dump completions + stats, skip GPU-blocking scoring ----
+    if args.generate_only:
+        gen_path = os.path.join(args.output_dir, f"gen__{out_tag}.jsonl")
+        meta_path = os.path.join(args.output_dir, f"genmeta__{out_tag}.json")
+        with open(gen_path, "w") as f:
+            for row, out in zip(rows, outs):
+                texts, lens, neglogps, neglogp_pos = [], [], [], []
+                for c in out.outputs:
+                    nt, mnl, npos = _completion_stats(c, args.logprob_max_pos)
+                    texts.append(c.text)
+                    lens.append(nt)
+                    neglogps.append(mnl)
+                    if npos is not None:
+                        neglogp_pos.append(npos)
+                rec = {
+                    "task_id": row.get("extra_info", {}).get("task_id"),
+                    "data_source": row["data_source"],
+                    "ground_truth": row["reward_model"]["ground_truth"],
+                    "completions": texts,
+                    "token_lens": lens,
+                    "mean_neglogp": neglogps,
+                }
+                if neglogp_pos:
+                    rec["neglogp_by_pos"] = neglogp_pos
+                f.write(json.dumps(rec) + "\n")
+        with open(meta_path, "w") as f:
+            json.dump({
+                "model": args.model_name_or_path,
+                "eval_parquet": args.eval_parquet,
+                "mode": args.mode,
+                "n_samples_per_prompt": args.n_samples,
+                "num_prompts": len(rows),
+                "config": config,
+                "out_tag": out_tag,
+            }, f, indent=2)
+        print(f"[generate_only] wrote {gen_path}")
+        print(f"[generate_only] wrote {meta_path}")
+        print("[generate_only] score later with: python "
+              "recipe/annealed_sampling/codeRL/score_dump.py "
+              f"--gen_jsonl {gen_path}")
+        return
+
+    # ---- normal mode: score inline ----
     pass_at_1 = 0.0
     pass_at_k = 0.0
     worst_at_k = 0.0
@@ -206,36 +352,12 @@ def main():
         ground_truth = row["reward_model"]["ground_truth"]
         successes = []
         statuses = []  # one per completion; populated for humanevalplus / prime_code
+        lens = []
         for completion in out.outputs:
-            text = completion.text
-            status_detail = None
-            try:
-                # For the code rewards, call the underlying scorer directly so we
-                # can keep the failure-reason metadata. Other data sources still
-                # go through the standard dispatcher.
-                if data_source in ("humanevalplus", "mbppplus"):
-                    from verl.utils.reward_score import humanevalplus as _hep
-                    score_val, meta = _hep.compute_score(text, ground_truth)
-                    status_detail = (meta[0] if meta else {}).get("status") \
-                        or (meta[0] if meta else {}).get("error")
-                    score = float(score_val)
-                elif data_source in ("codecontests", "apps", "codeforces", "taco"):
-                    from verl.utils.reward_score import prime_code as _pc
-                    success, _meta = _pc.compute_score(text, ground_truth, continuous=True)
-                    # prime_code returns either a bool or a float in [0, 1]
-                    score = 1.0 if (success is True) else float(success) if isinstance(success, (int, float)) else 0.0
-                    status_detail = "passed" if score >= 0.999 else "failed"
-                else:
-                    res = default_compute_score(data_source, text, ground_truth)
-                    if isinstance(res, dict):
-                        score = float(res.get("score", 0.0))
-                    else:
-                        score = float(res)
-            except Exception as e:  # noqa: BLE001
-                score = 0.0
-                status_detail = f"exception: {type(e).__name__}: {e}"
+            score, status_detail = score_completion(data_source, completion.text, ground_truth)
             successes.append(score)
             statuses.append(status_detail)
+            lens.append(len(getattr(completion, "token_ids", []) or []))
         n_ok = sum(1 for s in successes if s >= 0.999)
         any_ok = 1.0 if n_ok > 0 else 0.0
         all_ok = 1.0 if n_ok == len(successes) else 0.0
@@ -252,6 +374,7 @@ def main():
             "task_id": row.get("extra_info", {}).get("task_id"),
             "successes": successes,
             "statuses": statuses,
+            "token_lens": lens,
             "first_completion": first_completion,
             "pass@1": first_ok,
             "pass@k": any_ok,
@@ -276,26 +399,9 @@ def main():
         "pass@1": pass_at_1 / max(n, 1),
         f"pass@{args.n_samples}": pass_at_k / max(n, 1),
         f"worst@{args.n_samples}": worst_at_k / max(n, 1),
-        "config": {
-            "max_tokens": args.max_tokens,
-            "enable_thinking": args.enable_thinking,
-            "temperature": args.temperature,
-            "start_temp": args.start_temp,
-            "end_temp": args.end_temp,
-            "decay_freq": args.decay_freq,
-            "decay_mode": args.decay_mode,
-            "decay_freq_cap_large": args.decay_freq_cap_large,
-            "decay_freq_increase_factor": args.decay_freq_increase_factor,
-            "warmup_period": args.warmup_period,
-        },
+        "config": config,
     }
 
-    out_tag = (
-        os.path.basename(args.eval_parquet).replace(".parquet", "")
-        + f"__{args.mode}"
-        + (f"__T{args.temperature}" if args.mode == "fixed"
-           else f"__neg_{args.start_temp}_{args.end_temp}_d{args.decay_freq}")
-    )
     summary_path = os.path.join(args.output_dir, f"summary__{out_tag}.json")
     per_prompt_path = os.path.join(args.output_dir, f"per_prompt__{out_tag}.jsonl")
     with open(summary_path, "w") as f:
