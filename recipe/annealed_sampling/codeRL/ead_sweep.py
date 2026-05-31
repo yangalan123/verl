@@ -21,7 +21,10 @@ from the actual response-length distribution. This script automates that:
        warmup_period fixed from analysis). Each config: generate-only on GPU,
        then score on CPU.
   Phase 4  REPORT
-       compare every EAD config to the baseline; list the winners.
+       compute pass@K (unbiased, over the saved per-prompt successes vectors)
+       for the fixed-T grid and every EAD config. KEEP an EAD config if it beats
+       the BEST fixed baseline at ANY K in --report_ks (a win at K>1 is the
+       strong/promising case and is flagged with *); otherwise discard it.
 
 GPU/CPU split: generation (GPU-bound) and scoring (CPU/sandbox-bound) are
 separate processes. The scheduler keeps all GPUs busy generating while scoring
@@ -47,6 +50,7 @@ import os
 import subprocess
 import sys
 import time
+from math import comb
 from typing import Any, Dict, List, Optional
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -281,7 +285,18 @@ def main():
                     choices=["all", "data", "analyze", "sweep", "report"])
     ap.add_argument("--metric", default="pass@k",
                     choices=["pass@1", "pass@k", "worst@k"],
-                    help="Primary metric used to rank EAD winners in the report.")
+                    help="(Deprecated/unused) The report now keeps any EAD config "
+                         "that beats the best fixed baseline at ANY pass@K in "
+                         "--report_ks; ranking prefers K>1 wins then largest delta.")
+    ap.add_argument("--baseline_temps", default="0.6,0.7,0.8,1.0,1.2",
+                    help="Fixed-temperature baseline GRID. EAD must beat the "
+                         "BEST of these to count as a win. T=1.0 also captures "
+                         "logprobs and doubles as the analysis dump.")
+    ap.add_argument("--report_ks", default="1,2,4,8,16,32",
+                    help="K values for pass@K in the report. An EAD config is "
+                         "KEPT if it beats the best fixed baseline at ANY of "
+                         "these K (a win at K>1 is flagged as the strong case); "
+                         "otherwise it is discarded.")
     ap.add_argument("--force", action="store_true",
                     help="Re-run even if outputs already exist.")
     ap.add_argument("--dry_run", action="store_true")
@@ -289,6 +304,8 @@ def main():
 
     gpus = [int(x) for x in args.gpus.split(",") if x.strip() != ""]
     benches = [b for b in args.benchmarks.split(",") if b.strip()]
+    baseline_temps = [float(x) for x in args.baseline_temps.split(",") if x.strip()]
+    report_ks = sorted({int(x) for x in args.report_ks.split(",") if x.strip()})
     models = [m for m in MODELS
               if (args.models is None or args.models.lower() in m["model"].lower())]
     if not models:
@@ -311,34 +328,38 @@ def main():
             out_dir = os.path.join(args.root, tag, b)
             os.makedirs(out_dir, exist_ok=True)
             pbase = parquet_basename(parquet)
-            base_tag = predict_tag(pbase, "fixed", temperature=1.0)
 
-            if not args.force and summary_exists(out_dir, base_tag):
-                # baseline done; ensure we have a dump to analyze, else smoke it
-                if find_gen_for_analysis(out_dir) is None:
-                    smoke_suffix = "smoke"
-                    smoke_tag = predict_tag(pbase, "fixed", temperature=1.0,
-                                            suffix=smoke_suffix)
-                    cmd = gen_cmd(m, parquet, out_dir, mode="fixed",
-                                  n_samples=args.smoke_samples,
-                                  max_prompts=args.smoke_prompts, logprobs=1,
-                                  suffix=smoke_suffix, temperature=1.0)
-                    jobs.append(Job(f"{tag}/{b}:smoke", "gen", cmd, tp=m["tp"],
-                                    logfile=os.path.join(log_root, f"{tag}__{b}__smoke.log")))
-                continue
+            # Fixed-temperature baseline GRID (so EAD must beat the BEST fixed T,
+            # not just T=1.0). The T=1.0 run additionally captures logprobs and
+            # serves as the analysis dump.
+            will_regen_t1 = False
+            for T in baseline_temps:
+                btag = predict_tag(pbase, "fixed", temperature=T)
+                if not args.force and summary_exists(out_dir, btag):
+                    continue
+                is_t1 = abs(T - 1.0) < 1e-9
+                will_regen_t1 = will_regen_t1 or is_t1
+                gen_path = os.path.join(out_dir, f"gen__{btag}.jsonl")
+                cmd = gen_cmd(m, parquet, out_dir, mode="fixed",
+                              n_samples=args.n_samples, max_prompts=-1,
+                              logprobs=(1 if is_t1 else 0), suffix="",
+                              temperature=T)
+                jobs.append(Job(
+                    f"{tag}/{b}:fixedT{T}", "gen", cmd, tp=m["tp"],
+                    logfile=os.path.join(log_root, f"{tag}__{b}__fixedT{T}.log"),
+                    score_cmd=score_cmd(gen_path, args.score_workers),
+                    score_name=f"{tag}/{b}:fixedT{T}:score",
+                    score_log=os.path.join(log_root, f"{tag}__{b}__fixedT{T}_score.log")))
 
-            # baseline missing -> full generate-only WITH logprobs (serves both
-            # the baseline score AND the analysis), then score on CPU.
-            gen_path = os.path.join(out_dir, f"gen__{base_tag}.jsonl")
-            cmd = gen_cmd(m, parquet, out_dir, mode="fixed",
-                          n_samples=args.n_samples, max_prompts=-1, logprobs=1,
-                          suffix="", temperature=1.0)
-            jobs.append(Job(
-                f"{tag}/{b}:baseline", "gen", cmd, tp=m["tp"],
-                logfile=os.path.join(log_root, f"{tag}__{b}__baseline.log"),
-                score_cmd=score_cmd(gen_path, args.score_workers),
-                score_name=f"{tag}/{b}:baseline:score",
-                score_log=os.path.join(log_root, f"{tag}__{b}__baseline_score.log")))
+            # Ensure an analysis dump exists. If we are NOT regenerating T=1.0
+            # this run and there is no dump yet, run a small smoke job.
+            if not will_regen_t1 and find_gen_for_analysis(out_dir) is None:
+                cmd = gen_cmd(m, parquet, out_dir, mode="fixed",
+                              n_samples=args.smoke_samples,
+                              max_prompts=args.smoke_prompts, logprobs=1,
+                              suffix="smoke", temperature=1.0)
+                jobs.append(Job(f"{tag}/{b}:smoke", "gen", cmd, tp=m["tp"],
+                                logfile=os.path.join(log_root, f"{tag}__{b}__smoke.log")))
 
         if args.dry_run:
             print(f"[dry_run] phase=data would launch {len(jobs)} gen jobs:")
@@ -425,45 +446,92 @@ def main():
         for m, b in pairs:
             tag = model_tag(m["model"])
             out_dir = os.path.join(args.root, tag, b)
-            pbase = parquet_basename(resolve_parquet(args.data_root, b, args.lcb_version))
-            base = _read_summary(out_dir, predict_tag(pbase, "fixed", temperature=1.0))
-            if base is None:
-                continue
-            metrics_keys = ["pass@1", _kkey(base, "pass"), _kkey(base, "worst")]
-            ead_rows = []
-            for sp in sorted(glob.glob(os.path.join(out_dir, "summary__*__ead__*.json"))):
-                s = _load(sp)
-                if s is None:
+
+            # --- fixed-temperature baseline GRID: pass@K from successes vectors ---
+            fixed_rows = []  # {"T":, "passk":{k:val}, "n_max":}
+            for pp in sorted(glob.glob(os.path.join(out_dir, "per_prompt__*__fixed__T*.jsonl"))):
+                passk, n_max = _passk_from_perprompt(pp, report_ks)
+                if not passk:
                     continue
+                s = _sibling_summary(pp) or {}
+                T = s.get("config", {}).get("temperature")
+                if T is None:
+                    T = _T_from_tag(pp)
+                fixed_rows.append({"T": T, "passk": passk, "n_max": n_max})
+            if not fixed_rows:
+                continue
+            # best fixed pass@K per K (value + which T)
+            base_best = {}
+            for k in report_ks:
+                cands = [(r["passk"][k], r["T"]) for r in fixed_rows
+                         if r["passk"].get(k) is not None]
+                base_best[k] = max(cands) if cands else (None, None)
+
+            # --- EAD configs: keep if beats best-fixed pass@K at ANY K ---
+            kept, discarded = [], 0
+            for pp in sorted(glob.glob(os.path.join(out_dir, "per_prompt__*__ead__*.jsonl"))):
+                passk, n_max = _passk_from_perprompt(pp, report_ks)
+                if not passk:
+                    continue
+                s = _sibling_summary(pp) or {}
                 cfg = s.get("config", {})
-                row = {
-                    "config": f"st={cfg.get('start_temp')} et={cfg.get('end_temp')} "
-                              f"d={cfg.get('decay_freq')} w={cfg.get('warmup_period')}",
-                    "pass@1": s.get("pass@1"),
-                    "pass@k": _val(s, "pass"),
-                    "worst@k": _val(s, "worst"),
-                }
-                ead_rows.append(row)
-            base_row = {"pass@1": base.get("pass@1"),
-                        "pass@k": _val(base, "pass"),
-                        "worst@k": _val(base, "worst")}
-            key = args.metric
-            winners = [r for r in ead_rows
-                       if r[key] is not None and base_row[key] is not None
-                       and r[key] > base_row[key]]
-            winners.sort(key=lambda r: r[key], reverse=True)
-            report[f"{tag}/{b}"] = {"baseline": base_row, "winners": winners,
-                                    "num_ead_configs": len(ead_rows)}
-            print(f"\n=== {tag}/{b} === baseline {key}={base_row[key]}")
-            if not ead_rows:
+                label = (f"st={cfg.get('start_temp')} et={cfg.get('end_temp')} "
+                         f"d={cfg.get('decay_freq')} w={cfg.get('warmup_period')}")
+                wins = []  # list of (k, ead_val, base_val, delta)
+                for k in report_ks:
+                    bb_val, _ = base_best.get(k, (None, None))
+                    ev = passk.get(k)
+                    if bb_val is not None and ev is not None and ev > bb_val:
+                        wins.append((k, ev, bb_val, ev - bb_val))
+                if not wins:
+                    discarded += 1
+                    continue
+                strong = any(k > 1 for (k, *_rest) in wins)  # ideally K>1
+                best_win = max(wins, key=lambda w: w[3])
+                kept.append({
+                    "config": label, "passk": passk, "n_max": n_max,
+                    "win_ks": [w[0] for w in wins],
+                    "strong_kgt1": strong,
+                    "best_delta": best_win[3], "best_delta_k": best_win[0],
+                })
+            # promising (K>1 wins) first, then by best delta
+            kept.sort(key=lambda r: (r["strong_kgt1"], r["best_delta"]), reverse=True)
+
+            report[f"{tag}/{b}"] = {
+                "report_ks": report_ks,
+                "baseline_grid": [{"T": r["T"], "passk": r["passk"]} for r in fixed_rows],
+                "baseline_best_passk": {str(k): {"value": v, "T": t}
+                                        for k, (v, t) in base_best.items()},
+                "kept": kept,
+                "num_discarded": discarded,
+                "num_ead_configs": len(kept) + discarded,
+            }
+
+            # --- print ---
+            bb_str = "  ".join(
+                f"K={k}:{(base_best[k][0] if base_best[k][0] is not None else float('nan')):.3f}"
+                f"(T={base_best[k][1]})" for k in report_ks)
+            print(f"\n=== {tag}/{b} ===")
+            print(f"  best fixed pass@K:  {bb_str}")
+            n_ead = len(kept) + discarded
+            if n_ead == 0:
                 print("  (no EAD configs scored yet)")
-            for r in winners[:10]:
-                d = r[key] - base_row[key]
-                print(f"  WIN {r['config']:45s} {key}={r[key]:.4f} (+{d:.4f})")
-            if ead_rows and not winners:
-                best = max(ead_rows, key=lambda r: (r[key] if r[key] is not None else -1))
-                print(f"  no winner; best EAD {key}={best[key]} ({best['config']})")
-        rep_path = os.path.join(args.root, "ead_sweep_report.json")
+            else:
+                print(f"  kept {len(kept)}/{n_ead} EAD configs "
+                      f"(beat best fixed at some K; * = beats at K>1), "
+                      f"discarded {discarded}")
+            for r in kept[:12]:
+                mark = "*" if r["strong_kgt1"] else " "
+                kp = r["passk"].get(r["best_delta_k"])
+                print(f" {mark}{r['config']:46s} win@K={r['win_ks']} "
+                      f"best K={r['best_delta_k']} pass@{r['best_delta_k']}="
+                      f"{(kp if kp is not None else float('nan')):.4f} "
+                      f"(+{r['best_delta']:.4f})")
+        # Suffix the report with the benchmark filter so parallel per-dataset
+        # sessions (e.g. one for humanevalplus, one for livecodebench) do not
+        # clobber each other's report.
+        bench_slug = "_".join(benches)
+        rep_path = os.path.join(args.root, f"ead_sweep_report__{bench_slug}.json")
         with open(rep_path, "w") as f:
             json.dump(report, f, indent=2)
         print(f"\n[ead_sweep] wrote report -> {rep_path}")
@@ -477,22 +545,81 @@ def _load(path):
         return None
 
 
-def _read_summary(out_dir, tag):
-    return _load(os.path.join(out_dir, f"summary__{tag}.json"))
+_SUCCESS_THRESHOLD = 0.999
 
 
-def _kkey(summary, prefix):
-    for k in summary:
-        if k.startswith(f"{prefix}@") and k != f"{prefix}@1":
-            return k
-    return f"{prefix}@k"
+def _pass_at_k(n: int, c: int, k: int) -> Optional[float]:
+    """Unbiased pass@k (Chen et al. 2021, "Codex"). None if k > n."""
+    if k > n:
+        return None
+    if c <= 0:
+        return 0.0
+    if n - c < k:
+        return 1.0
+    return 1.0 - comb(n - c, k) / comb(n, k)
 
 
-def _val(summary, prefix):
-    for k, v in summary.items():
-        if k.startswith(f"{prefix}@") and k != f"{prefix}@1" and isinstance(v, (int, float)):
-            return float(v)
+def _passk_from_perprompt(path: str, ks: List[int]):
+    """Read a per_prompt__*.jsonl 'successes' dump -> {k: pass@k}, n_max."""
+    vectors = []
+    try:
+        with open(path) as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                succ = row.get("successes")
+                if isinstance(succ, list) and succ:
+                    vectors.append(succ)
+    except OSError:
+        return None, 0
+    if not vectors:
+        return None, 0
+    n_max = max(len(v) for v in vectors)
+    out = {}
+    for k in ks:
+        vals = []
+        for v in vectors:
+            n = len(v)
+            c = sum(1 for s in v if float(s) >= _SUCCESS_THRESHOLD)
+            pk = _pass_at_k(n, c, k)
+            if pk is not None:
+                vals.append(pk)
+        out[k] = (sum(vals) / len(vals)) if vals else None
+    return out, n_max
+
+
+def _sibling_summary(per_prompt_path: str) -> Optional[Dict[str, Any]]:
+    base = os.path.basename(per_prompt_path)
+    if base.startswith("per_prompt__"):
+        tag = base[len("per_prompt__"):].rsplit(".jsonl", 1)[0]
+        return _load(os.path.join(os.path.dirname(per_prompt_path),
+                                  f"summary__{tag}.json"))
     return None
+
+
+def _T_from_tag(per_prompt_path: str) -> Optional[float]:
+    """Parse '...__fixed__T0.7...' -> 0.7 from the filename, as a fallback."""
+    base = os.path.basename(per_prompt_path)
+    marker = "__fixed__T"
+    i = base.find(marker)
+    if i < 0:
+        return None
+    rest = base[i + len(marker):]
+    num = ""
+    for ch in rest:
+        if ch.isdigit() or ch == ".":
+            num += ch
+        else:
+            break
+    try:
+        return float(num)
+    except ValueError:
+        return None
 
 
 if __name__ == "__main__":
