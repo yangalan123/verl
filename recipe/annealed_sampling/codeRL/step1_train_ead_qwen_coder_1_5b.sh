@@ -7,8 +7,11 @@
 # Usage:
 #   bash recipe/annealed_sampling/codeRL/step1_train_ead_qwen_coder_1_5b.sh
 #
-# Hyperparameters mirror the small-model defaults reported in the paper:
-#   tau_max = 1.2, tau_min = 0.1, d_0 = 200, alpha = 5, d_max = 40000.
+# Schedule is sized for code completions, not the math paper defaults.
+#   tau_max = 1.2, tau_min = 0.3, decay_freq = 15, warmup = 16, alpha = 0.
+# With alpha = 5 the hot region grows past a code answer within ~20 steps,
+# which recreates the inference failure (EAD never cools). alpha = 0 keeps
+# the floor near token 200 for the whole run.
 
 set -euxo pipefail
 
@@ -36,12 +39,12 @@ test_freq=10
 TOTAL_TRAINING_STEPS="${TOTAL_TRAINING_STEPS:-100}"
 
 # EAD schedule (same names as the math recipe so logs line up).
-decay_freq=200
+decay_freq=15
 start_temp=1.2
-end_temp=0.1
-warmup_period=10
+end_temp=0.3
+warmup_period=16
 strategy="negexp"
-decay_freq_increase_factor=5
+decay_freq_increase_factor=0
 decay_freq_cap_large=40000
 
 experiment_name="ead_${strategy}_explore_${start_temp}_stable_${end_temp}_d0_${decay_freq}_alpha_${decay_freq_increase_factor}_dmax_${decay_freq_cap_large}"

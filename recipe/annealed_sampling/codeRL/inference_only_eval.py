@@ -21,7 +21,7 @@ Example:
     python recipe/annealed_sampling/codeRL/inference_only_eval.py \\
         --model_name_or_path Qwen/Qwen2.5-Coder-1.5B-Instruct \\
         --eval_parquet ./data/livecodebench/release_v2_test.parquet \\
-        --mode ead --start_temp 1.2 --end_temp 0.1 --decay_freq 200 \\
+        --mode ead --start_temp 1.2 --end_temp 0.3 --decay_freq 15 --warmup_period 16 \\
         --n_samples 8
 """
 
@@ -189,12 +189,12 @@ def main():
     )
     # EAD-specific
     parser.add_argument("--start_temp", type=float, default=1.2)
-    parser.add_argument("--end_temp", type=float, default=0.1)
-    parser.add_argument("--decay_freq", type=int, default=200)
-    parser.add_argument("--warmup_period", type=int, default=10)
+    parser.add_argument("--end_temp", type=float, default=0.3)
+    parser.add_argument("--decay_freq", type=int, default=15)
+    parser.add_argument("--warmup_period", type=int, default=16)
     parser.add_argument("--decay_mode", default="negexp")
     parser.add_argument("--decay_freq_cap_large", type=int, default=40000)
-    parser.add_argument("--decay_freq_increase_factor", type=int, default=5)
+    parser.add_argument("--decay_freq_increase_factor", type=int, default=0)
     parser.add_argument("--global_step", type=int, default=0,
                         help="Used only by the EAD schedule (0 for inference-only).")
     # vLLM scaffolding

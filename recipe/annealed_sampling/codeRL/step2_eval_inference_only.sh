@@ -6,7 +6,10 @@
 #   (1) fixed temp 0.7   -- low-temperature competitive baseline
 #   (2) fixed temp 1.0   -- high-entropy baseline
 #   (3) fixed temp 1.2   -- matches EAD's exploration_temp upper bound
-#   (4) EAD negexp 1.2 -> 0.1 with d_0 = 200 (paper default for small models)
+#   (4) EAD negexp 1.2 -> 0.3 with decay_freq = 15, warmup 16.
+#       decay_freq=200 (the old default) only reaches the floor after ~3000
+#       tokens, so on 100-400 token code answers it never cools and behaves
+#       like temperature 1.2. decay_freq=15 reaches the floor near token 200.
 #
 # Costs ~30-60 min per config on 1 A100 for the 1.5B model.
 set -euxo pipefail
@@ -46,9 +49,9 @@ do
         --model_name_or_path "${MODEL}" \
         --eval_parquet "${PARQUET}" \
         --mode ead \
-        --start_temp 1.2 --end_temp 0.1 --decay_freq 200 \
+        --start_temp 1.2 --end_temp 0.3 --decay_freq 15 --warmup_period 16 \
         --decay_mode negexp --decay_freq_cap_large 40000 \
-        --decay_freq_increase_factor 5 \
+        --decay_freq_increase_factor 0 \
         --n_samples "${N_SAMPLES}" \
         --tensor_parallel_size "${TP}" \
         --output_dir "${OUT_DIR}"

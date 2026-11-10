@@ -156,10 +156,27 @@ bash recipe/annealed_sampling/codeRL/step1_train_ead_qwen_coder_1_5b.sh
 Training set is the code subset of Eurus-2 (capped at 10k). Eval is HumanEval+
 and LiveCodeBench release_v2. Rewards are local Python subprocesses
 (`prime_code`, `humanevalplus`); nothing needs Docker or firejail.
-Model is `Qwen/Qwen2.5-Coder-1.5B-Instruct`. The EAD script uses
-`decay_freq=200` because the math default (`25`) is sized for math responses.
-If EAD loses to the fixed-temperature runs, sweep that value with
-`recipe/annealed_sampling/codeRL/ead_sweep.py` (`README_ead_sweep.md`).
+Model is `Qwen/Qwen2.5-Coder-1.5B-Instruct`.
+
+The earlier inference run used the math-sized schedule (`decay_freq=200`,
+floor 0.1). At inference that schedule reaches the floor only after about
+3000 tokens, and code answers are a few hundred tokens, so EAD stayed near
+temperature 1.2 for the whole answer and lost to fixed temperature. The
+saved `summary__*.json` files from that run are not in this checkout.
+
+The code scripts now use a guess sized to a ~200 token answer:
+
+| knob | old | now |
+|---|---|---|
+| `decay_freq` | 200 | 15 (floor near token 200) |
+| floor | 0.1 | 0.3 |
+| warmup | 10 | 16 |
+| growth per step | 5 | 0 (a growth of 5 undoes the anneal within ~20 RL steps) |
+
+`start_temp` stays 1.2. This is a guess, not a fit to measured lengths.
+If it still loses, `ead_sweep.py` (`README_ead_sweep.md`) rebuilds the grid
+from a real length dump. The grid worker's default decay values are
+`8 15 30`.
 
 ## 4. What to send back
 

@@ -16,9 +16,10 @@
 #
 # Grids (override via env vars):
 #   FIXED_TEMPS   default "0.7 1.0 1.2"     -- fixed-temperature sweep
-#   DECAY_FREQS   default "25 50 100 200"   -- EAD decay_freq (d_0) ablation
+#   DECAY_FREQS   default "8 15 30"         -- EAD decay_freq; 15 hits the floor near token 200
 #   START_TEMP    default 1.2               -- EAD tau_max
-#   END_TEMP      default 0.1               -- EAD tau_min
+#   END_TEMP      default 0.3               -- EAD tau_min (0.1 never matched code decoding)
+#   WARMUP        default 16                -- tokens left at temperature 1
 #
 # Other env vars:
 #   MODEL          default Qwen/Qwen2.5-Coder-1.5B-Instruct
@@ -63,9 +64,10 @@ SAVE_COMPLETIONS="${SAVE_COMPLETIONS:-0}"
 COMPLETION_CHAR_CAP="${COMPLETION_CHAR_CAP:-0}"
 
 FIXED_TEMPS="${FIXED_TEMPS:-0.7 1.0 1.2}"
-DECAY_FREQS="${DECAY_FREQS:-25 50 100 200}"
+DECAY_FREQS="${DECAY_FREQS:-8 15 30}"
 START_TEMP="${START_TEMP:-1.2}"
-END_TEMP="${END_TEMP:-0.1}"
+END_TEMP="${END_TEMP:-0.3}"
+WARMUP="${WARMUP:-16}"
 
 export TOKENIZERS_PARALLELISM=false
 
@@ -122,8 +124,8 @@ elif [ "${MODE}" = "ead" ]; then
         echo "[worker] >>> ead negexp ${START_TEMP}->${END_TEMP} decay_freq=${D}"
         run_one --mode ead \
             --start_temp "${START_TEMP}" --end_temp "${END_TEMP}" \
-            --decay_freq "${D}" --decay_mode negexp \
-            --decay_freq_cap_large 40000 --decay_freq_increase_factor 5
+            --decay_freq "${D}" --decay_mode negexp --warmup_period "${WARMUP}" \
+            --decay_freq_cap_large 40000 --decay_freq_increase_factor 0
     done
 else
     echo "Unknown mode '${MODE}' (want fixed | ead)"; exit 1
